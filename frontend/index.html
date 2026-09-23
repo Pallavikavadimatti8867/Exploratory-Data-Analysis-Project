@@ -353,12 +353,21 @@
         <!-- TAB 3: VISUALIZATIONS -->
         <!-- ======================================================== -->
         <section class="tab-pane" id="tab-visualizations">
-          <div class="section-intro">
-            <h2>Automated Interactive Visualizations</h2>
-            <p>Dynamically constructed visualizations mapped to dataset attributes via Chart.js</p>
+          <div class="section-intro flex-between flex-wrap gap-3">
+            <div>
+              <h2>Automated Interactive Visualizations</h2>
+              <p>Dynamically constructed visualizations mapped to dataset attributes via Chart.js and statistical outlier engines</p>
+            </div>
+            <div class="viz-nav-links flex-align-center gap-2">
+              <a href="#viz-standard-grid" class="btn btn-sm btn-outline">Standard Charts (1–8)</a>
+              <a href="#boxplotSection" class="btn btn-sm btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <span>Box Plots & Outliers</span>
+              </a>
+            </div>
           </div>
 
-          <div class="viz-grid">
+          <div class="viz-grid" id="viz-standard-grid">
             <!-- Chart 1: Value by Category -->
             <div class="card viz-card">
               <div class="card-header">
@@ -460,6 +469,133 @@
               </div>
               <div class="heatmap-container" id="correlationHeatmapContainer">
                 <div class="text-center text-muted py-5">Computing correlation matrix...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ======================================================== -->
+          <!-- SECTION: NUMERICAL FEATURE BOX PLOTS & OUTLIER DETECTION -->
+          <!-- ======================================================== -->
+          <div class="boxplot-section mt-5" id="boxplotSection">
+            <div class="card">
+              <div class="card-header flex-between flex-wrap gap-3">
+                <div>
+                  <div class="flex-align-center gap-2">
+                    <h3>Numerical Feature Box Plots & Outlier Analysis</h3>
+                    <span class="badge badge-rose" id="outlierHeaderBadge">Outlier Detection Active</span>
+                  </div>
+                  <p class="card-desc">Five-number summary (Min, Q1, Median, Q3, Max) with Tukey IQR fences (1.5&times; IQR) to identify, isolate, and highlight data outliers across all numerical columns.</p>
+                </div>
+
+                <div class="boxplot-toolbar flex-align-center gap-2 flex-wrap">
+                  <button class="btn btn-sm btn-outline" id="btnToggleOutliersOnly" title="Filter to columns containing detected outliers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <span id="toggleOutliersText">Show Outliers Only</span>
+                  </button>
+
+                  <button class="btn btn-sm btn-outline active-toggle" id="btnToggleJitterPoints" title="Toggle individual data points overlay">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg>
+                    <span id="toggleJitterText">Data Points: Visible</span>
+                  </button>
+
+                  <button class="btn btn-sm btn-outline" id="btnRefreshBoxPlots" title="Recalculate box plots and outliers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Outlier Summary Metrics Strip -->
+              <div class="boxplot-kpis-grid">
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Numerical Columns Evaluated</div>
+                  <div class="bp-kpi-value mono font-bold" id="bpTotalNumCols">--</div>
+                  <div class="bp-kpi-subtext" id="bpColsNames">Scanning columns...</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Columns with Outliers</div>
+                  <div class="bp-kpi-value mono font-bold text-rose" id="bpColsWithOutliers">--</div>
+                  <div class="bp-kpi-subtext" id="bpColsWithOutliersPct">--% of numerical features</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Total Outliers Detected</div>
+                  <div class="bp-kpi-value mono font-bold text-rose" id="bpTotalOutliersCount">--</div>
+                  <div class="bp-kpi-subtext" id="bpTotalOutliersRate">-- of total records</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Detection Rule</div>
+                  <div class="bp-kpi-value mono font-bold text-indigo">Tukey 1.5&times; IQR</div>
+                  <div class="bp-kpi-subtext">Q1 - 1.5&times;IQR &bull; Q3 + 1.5&times;IQR</div>
+                </div>
+              </div>
+
+              <!-- Column Selector Filter Pills / Buttons -->
+              <div class="boxplot-selector-bar">
+                <span class="selector-label">Filter Column:</span>
+                <div class="boxplot-column-buttons flex-align-center gap-2 flex-wrap" id="boxplotColumnButtons">
+                  <button class="btn btn-sm btn-primary active" data-col="all">All Numerical Columns</button>
+                </div>
+              </div>
+
+              <!-- Comparative Multi-Column Normalized Box Plot View -->
+              <div class="comparative-boxplot-card mt-4">
+                <div class="comparative-header flex-between flex-wrap gap-2">
+                  <div>
+                    <h4>Normalized Multi-Column Comparative Box Plot</h4>
+                    <p class="text-sm text-muted">Unified 0% to 100% scale comparing quartile spreads, medians, and outlier clusters side-by-side</p>
+                  </div>
+                  <div class="legend-items flex-align-center gap-3 text-xs text-muted">
+                    <span class="legend-item"><span class="legend-dot bg-indigo"></span> IQR Box (Q1 - Q3)</span>
+                    <span class="legend-item"><span class="legend-dot bg-dark"></span> Median (Q2)</span>
+                    <span class="legend-item"><span class="legend-dot bg-emerald"></span> Mean</span>
+                    <span class="legend-item"><span class="legend-dot bg-rose"></span> Outlier (&gt; 1.5&times; IQR)</span>
+                  </div>
+                </div>
+                <div class="comparative-svg-container" id="comparativeBoxplotContainer">
+                  <div class="text-center text-muted py-4">Rendering comparative box plots...</div>
+                </div>
+              </div>
+
+              <!-- Individual Column Box Plot Cards Container -->
+              <div class="individual-boxplots-grid mt-4" id="individualBoxplotsGrid">
+                <div class="text-center text-muted py-5">Computing five-number summaries and outlier coordinates...</div>
+              </div>
+
+              <!-- Outliers Master Deep-Dive Table -->
+              <div class="outliers-master-table-card mt-4" id="outliersMasterTableCard">
+                <div class="card-header flex-between flex-wrap gap-2">
+                  <div>
+                    <h4>Detected Outliers Catalog</h4>
+                    <p class="card-desc">Exhaustive list of data points exceeding Tukey statistical fence thresholds</p>
+                  </div>
+                  <button class="btn btn-sm btn-outline" id="btnExportOutliersCsv">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span>Export Outliers List</span>
+                  </button>
+                </div>
+                <div class="table-responsive" style="max-height: 380px;">
+                  <table class="data-table" id="outliersMasterTable">
+                    <thead>
+                      <tr>
+                        <th>Column</th>
+                        <th>Row #</th>
+                        <th>Identifier / Label</th>
+                        <th>Value</th>
+                        <th>Threshold Fence</th>
+                        <th>Deviation</th>
+                        <th>Direction</th>
+                        <th>Severity</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="outliersMasterTableBody">
+                      <tr><td colspan="9" class="text-center text-muted">Loading outlier records...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>

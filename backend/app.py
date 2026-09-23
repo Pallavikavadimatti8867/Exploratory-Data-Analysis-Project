@@ -738,9 +738,11 @@ def get_visualizations():
         def find_col_by_keywords(cols, keywords, fallback_idx=0):
             for kw in keywords:
                 for c in cols:
-                    if kw.lower() in c.lower():
+                    if kw.lower() in str(c).lower():
                         return c
-            return cols[fallback_idx] if len(cols) > fallback_idx else None
+            if fallback_idx is not None and 0 <= fallback_idx < len(cols):
+                return cols[fallback_idx]
+            return None
 
         primary_val_col = find_col_by_keywords(num_cols, ['sales', 'revenue', 'price', 'amount', 'total', 'value'], 0)
         primary_qty_col = find_col_by_keywords(num_cols, ['quantity', 'qty', 'count', 'units', 'volume'], 1 if len(num_cols) > 1 else 0)
@@ -942,11 +944,17 @@ def get_visualizations():
         else:
             charts['chart8'] = None
 
+        # -------------------------------------------------------------
+        # Box Plots & Outlier Analysis Data
+        # -------------------------------------------------------------
+        boxplots_data = compute_box_plots_data(df)
+
         return jsonify({
             'success': True,
             'message': 'Visualizations calculated successfully',
             'data': {
                 'charts': sanitize_dict_for_json(charts),
+                'boxplots': sanitize_dict_for_json(boxplots_data),
                 'columns_used': {
                     'primary_value': primary_val_col,
                     'primary_quantity': primary_qty_col,
@@ -958,6 +966,138 @@ def get_visualizations():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error generating visualizations: {str(e)}"}), 500
+
+
+def compute_box_plots_data(df):
+    """
+    Computes rigorous five-number summaries (Min, Q1, Median, Q3, Max)
+    and Tukey interquartile range (1.5x IQR) fences to isolate and highlight
+    outliers for every numerical column in the dataset.
+    """
+    num_cols = list(df.select_dtypes(include=[np.number]).columns)
+
+    # Try to identify an ID or label column for contextual outlier reporting
+    label_col = None
+    for candidate in ['Product', 'Name', 'Title', 'Item', 'Customer_ID', 'ID']:
+        if candidate in df.columns:
+            label_col = candidate
+            break
+
+    columns_data = []
+    total_outliers_count = 0
+    cols_with_outliers_count = 0
+
+    for col in num_cols:
+        series = df[col].dropna()
+        missing_count = int(df[col].isna().sum())
+
+        if series.empty:
+            continue
+
+        q25 = float(series.quantile(0.25))
+        q50 = float(series.median())
+        q75 = float(series.quantile(0.75))
+        iqr = q75 - q25
+        lower_fence = q25 - 1.5 * iqr
+        upper_fence = q75 + 1.5 * iqr
+        extreme_lower_fence = q25 - 3.0 * iqr
+        extreme_upper_fence = q75 + 3.0 * iqr
+
+        # Whiskers according to standard Tukey definition:
+        # Lower whisker: lowest non-outlier value (>= lower_fence)
+        # Upper whisker: highest non-outlier value (<= upper_fence)
+        non_outliers = series[(series >= lower_fence) & (series <= upper_fence)]
+        lower_whisker = float(non_outliers.min()) if not non_outliers.empty else float(series.min())
+        upper_whisker = float(non_outliers.max()) if not non_outliers.empty else float(series.max())
+
+        # Detect outliers
+        outlier_mask = (series < lower_fence) | (series > upper_fence)
+        outlier_indices = series[outlier_mask].index
+
+        outliers_list = []
+        for idx in outlier_indices:
+            row = df.loc[idx]
+            val = float(row[col])
+            is_high = val > upper_fence
+            direction = 'high' if is_high else 'low'
+            fence_val = upper_fence if is_high else lower_fence
+            diff = abs(val - fence_val)
+            is_extreme = (val > extreme_upper_fence) or (val < extreme_lower_fence)
+            record_label = str(row[label_col]) if label_col and label_col in row and not pd.isna(row[label_col]) else f"Row {int(idx) + 1}"
+
+            outliers_list.append({
+                'index': int(idx),
+                'row_number': int(idx) + 1,
+                'value': round(val, 2),
+                'direction': direction,
+                'deviation': round(diff, 2),
+                'fence': round(fence_val, 2),
+                'is_extreme': bool(is_extreme),
+                'label': record_label
+            })
+
+        # Sort outliers by deviation descending
+        outliers_list.sort(key=lambda x: x['deviation'], reverse=True)
+
+        outlier_count = len(outliers_list)
+        if outlier_count > 0:
+            cols_with_outliers_count += 1
+            total_outliers_count += outlier_count
+
+        # Representative distribution points for data jitter/scatter visualization (up to 120 points)
+        sample_size = min(len(series), 120)
+        sample_vals = [round(float(v), 2) for v in series.sample(sample_size, random_state=42).tolist()] if len(series) > 0 else []
+
+        columns_data.append({
+            'column': col,
+            'count': int(len(series)),
+            'missing': missing_count,
+            'min': round(float(series.min()), 2),
+            'max': round(float(series.max()), 2),
+            'mean': round(float(series.mean()), 2),
+            'std': round(float(series.std()), 2) if len(series) > 1 else 0.0,
+            'q25': round(q25, 2),
+            'median': round(q50, 2),
+            'q75': round(q75, 2),
+            'iqr': round(iqr, 2),
+            'lower_whisker': round(lower_whisker, 2),
+            'upper_whisker': round(upper_whisker, 2),
+            'lower_fence': round(lower_fence, 2),
+            'upper_fence': round(upper_fence, 2),
+            'extreme_lower_fence': round(extreme_lower_fence, 2),
+            'extreme_upper_fence': round(extreme_upper_fence, 2),
+            'outliers': outliers_list,
+            'outlier_count': outlier_count,
+            'outlier_percentage': round((outlier_count / len(series)) * 100, 2) if len(series) > 0 else 0.0,
+            'has_outliers': outlier_count > 0,
+            'sample_values': sample_vals
+        })
+
+    return {
+        'total_numerical_columns': len(columns_data),
+        'columns_with_outliers': cols_with_outliers_count,
+        'total_outliers_count': total_outliers_count,
+        'columns': columns_data
+    }
+
+
+@app.route('/api/boxplots', methods=['GET'])
+def get_boxplots():
+    """
+    GET /api/boxplots
+    Returns five-number statistical summaries, Tukey fence calculations,
+    and isolated outliers with record contextual details for all numerical columns.
+    """
+    try:
+        df = get_active_df()
+        boxplots_data = compute_box_plots_data(df)
+        return jsonify({
+            'success': True,
+            'message': 'Box plot outlier analysis completed successfully',
+            'data': sanitize_dict_for_json(boxplots_data)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f"Error computing box plots: {str(e)}"}), 500
 
 
 @app.route('/api/clean', methods=['POST'])
