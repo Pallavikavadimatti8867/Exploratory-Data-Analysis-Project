@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "npm: dev (Start Full-Stack Server)",
+      "type": "shell",
+      "command": "npm run dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      }
+    },
+    {
+      "label": "python: install dependencies",
+      "type": "shell",
+      "command": "${command:python.interpreterPath} -m pip install -r requirements.txt",
+      "problemMatcher": []
+    },
+    {
+      "label": "npm: install dependencies",
+      "type": "shell",
+      "command": "npm install",
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "EDA Studio: Full-Stack (Node + Python)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen"
+    },
+    {
+      "name": "EDA Studio: Python Flask Backend Standalone",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/backend/app.py",
+      "console": "integratedTerminal",
+      "env": {
+        "PORT": "3000",
+        "PYTHONUNBUFFERED": "1"
+      }
+    },
+    {
+      "name": "Launch in Google Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Launch in Microsoft Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://localhost:3000",
+      "webRoot": "${workspaceFolder}/frontend"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full-Stack + Chrome",
+      "configurations": ["EDA Studio: Full-Stack (Node + Python)", "Launch in Google Chrome"]
+    },
+    {
+      "name": "Full-Stack + Edge",
+      "configurations": ["EDA Studio: Full-Stack (Node + Python)", "Launch in Microsoft Edge"]
+    }
+  ]
+}

@@ -2,12 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Exploratory Data Analysis (EDA) Dashboard</title>
   <meta name="description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
   <meta property="og:title" content="Exploratory Data Analysis (EDA) Dashboard">
   <meta property="og:description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
   <meta property="og:type" content="website">
+
+  <!-- Favicon for Chrome, Edge, Safari, Firefox -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.2'%3E%3Crect x='3' y='3' width='18' height='18' rx='3'/%3E%3Cline x1='3' y1='9' x2='21' y2='9'/%3E%3Cline x1='9' y1='21' x2='9' y2='9'/%3E%3C/svg%3E">
 
   <!-- Inter Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -191,26 +195,28 @@
               <div class="metric-subtext" id="cardColumnSplit">-- Numeric &bull; -- Categorical</div>
             </div>
 
-            <div class="metric-card">
+            <div class="metric-card clickable-card" id="cardMissingValuesBox" title="Click to inspect rows with missing values">
               <div class="metric-header">
                 <span class="metric-label">Missing Values</span>
                 <div class="metric-icon-wrap icon-amber">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                 </div>
               </div>
-              <div class="metric-value" id="cardMissingValues">--</div>
+              <div class="metric-value text-amber" id="cardMissingValues">--</div>
               <div class="metric-subtext" id="cardMissingRate">-- of total cells</div>
+              <div class="metric-action-hint">Click to filter missing records &rarr;</div>
             </div>
 
-            <div class="metric-card">
+            <div class="metric-card clickable-card" id="cardDuplicateRowsBox" title="Click to inspect duplicate rows">
               <div class="metric-header">
                 <span class="metric-label">Duplicate Rows</span>
                 <div class="metric-icon-wrap icon-rose">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
                 </div>
               </div>
-              <div class="metric-value" id="cardDuplicateRows">--</div>
+              <div class="metric-value text-rose" id="cardDuplicateRows">--</div>
               <div class="metric-subtext" id="cardDuplicateStatus">Status: Checked</div>
+              <div class="metric-action-hint">Click to filter duplicate records &rarr;</div>
             </div>
 
             <div class="metric-card">
@@ -322,6 +328,31 @@
                   </select>
                 </div>
               </div>
+            </div>
+
+            <!-- Interactive Filter Bar: All, Missing Values, Duplicates, Complete Cases -->
+            <div class="dataset-filter-bar">
+              <span class="filter-bar-label">Filter View:</span>
+              <button class="filter-pill active" id="filterPillAll" data-filter="all">
+                <span>All Records</span>
+                <span class="pill-count" id="countPillAll">--</span>
+              </button>
+              <button class="filter-pill pill-amber" id="filterPillMissing" data-filter="missing">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Rows with Missing Values</span>
+                <span class="pill-count" id="countPillMissing">--</span>
+              </button>
+              <button class="filter-pill pill-rose" id="filterPillDuplicates" data-filter="duplicates">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                <span>Duplicate Records</span>
+                <span class="pill-count" id="countPillDuplicates">--</span>
+              </button>
+              <button class="filter-pill pill-emerald" id="filterPillComplete" data-filter="complete">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Complete Cases Only</span>
+                <span class="pill-count" id="countPillComplete">--</span>
+              </button>
+              <button class="btn btn-sm btn-outline ml-auto" id="btnClearTableFilters" title="Reset table filters">Reset Filter</button>
             </div>
 
             <!-- Table with Horizontal Scrolling -->
@@ -751,6 +782,87 @@
           <div class="section-intro">
             <h2>Data Cleaning & Preprocessing Suite</h2>
             <p>Safely address data hygiene issues with instant before-and-after audit verification</p>
+          </div>
+
+          <!-- Diagnostic & Health Overview: Missing Values & Duplicate Values -->
+          <div class="card mb-4" id="missingAndDuplicatesDiagnosticCard">
+            <div class="card-header flex-between flex-wrap gap-2">
+              <div>
+                <h3>Missing & Duplicate Values Diagnostic</h3>
+                <p class="card-desc">Detailed health audit of incomplete fields, duplicate observations, and automated repairs</p>
+              </div>
+              <div class="header-action-group">
+                <button class="btn btn-sm btn-outline" id="btnRefreshDiagnostic" title="Refresh diagnostics">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                  <span>Re-audit</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Metric Summary Strip -->
+            <div class="diagnostic-stats-strip">
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Missing Cells</span>
+                <span class="diag-stat-value text-amber" id="diagMissingCells">--</span>
+                <span class="diag-stat-sub" id="diagMissingPct">--% of all cells</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Incomplete Rows</span>
+                <span class="diag-stat-value text-amber" id="diagMissingRows">--</span>
+                <span class="diag-stat-sub" id="diagMissingRowsPct">--% of records</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Duplicate Rows</span>
+                <span class="diag-stat-value text-rose" id="diagDuplicateRows">--</span>
+                <span class="diag-stat-sub" id="diagDuplicateStatus">Checking...</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Complete Cases</span>
+                <span class="diag-stat-value text-emerald" id="diagCompleteCases">--</span>
+                <span class="diag-stat-sub" id="diagCompleteCasesPct">--% clean rows</span>
+              </div>
+            </div>
+
+            <!-- Quick Action Toolbar -->
+            <div class="quick-clean-toolbar mt-3">
+              <span class="quick-clean-title">⚡ 1-Click Operations:</span>
+              <button class="btn btn-sm btn-outline" id="btnQuickRemoveDups">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                <span>Remove Duplicates</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickImputeMissing">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Impute All Missing</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickDropMissingRows">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>Drop Incomplete Rows</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickReset">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span>Revert Dataset</span>
+              </button>
+            </div>
+
+            <!-- Per-Column Missing Breakdown Table -->
+            <div class="table-responsive mt-3" style="max-height: 280px;">
+              <table class="data-table" id="missingBreakdownTable">
+                <thead>
+                  <tr>
+                    <th>Column Name</th>
+                    <th>Data Type</th>
+                    <th>Missing Count</th>
+                    <th>Missing %</th>
+                    <th>Non-Null Count</th>
+                    <th>Completeness</th>
+                    <th>Quick Impute</th>
+                  </tr>
+                </thead>
+                <tbody id="missingTableBody">
+                  <tr><td colspan="7" class="text-center text-muted">Auditing dataset missing values...</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Cleaning Action Form -->

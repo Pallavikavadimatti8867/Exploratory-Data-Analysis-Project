@@ -4,10 +4,25 @@
  * Powered by Chart.js, Fetch API, and reactive DOM manipulation.
  */
 
-// Determine backend API origin dynamically
-const API_BASE = (window.location.protocol.startsWith('http') && window.location.port !== '5500')
-  ? window.location.origin
-  : 'http://127.0.0.1:5000';
+// Determine backend API origin dynamically across environments (Vite/Node, Flask standalone, VS Code Live Server, Chrome, Edge)
+function resolveApiBase() {
+  if (typeof window === 'undefined' || !window.location) {
+    return 'http://127.0.0.1:3000';
+  }
+  const protocol = window.location.protocol;
+  const port = window.location.port;
+  const origin = window.location.origin;
+
+  // If opened via file:/// or common local static preview servers (e.g. VS Code Live Server on 5500/5501)
+  if (protocol === 'file:' || port === '5500' || port === '5501' || port === '8080' || port === '5173') {
+    return 'http://127.0.0.1:3000';
+  }
+  if (protocol.startsWith('http')) {
+    return origin;
+  }
+  return 'http://127.0.0.1:3000';
+}
+const API_BASE = resolveApiBase();
 
 // Global application state
 const AppState = {
@@ -22,7 +37,8 @@ const AppState = {
     totalPages: 1,
     searchQuery: '',
     sortCol: '',
-    sortDir: 'asc'
+    sortDir: 'asc',
+    activeFilter: 'all'
   },
   summary: null,
   charts: {},
@@ -153,6 +169,73 @@ function setupEventListeners() {
     });
   }
 
+  // Segmented Filter Pills (All, Missing, Duplicates, Complete)
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.getAttribute('data-filter') || 'all';
+      setDatasetFilter(filter);
+    });
+  });
+
+  const btnClearFilters = document.getElementById('btnClearTableFilters');
+  if (btnClearFilters) {
+    btnClearFilters.addEventListener('click', () => {
+      setDatasetFilter('all');
+      AppState.dataset.searchQuery = '';
+      const sInput = document.getElementById('datasetSearchInput');
+      if (sInput) sInput.value = '';
+    });
+  }
+
+  // Interactive KPI Metric Cards (Jump to filtered dataset view)
+  const cardMissingBox = document.getElementById('cardMissingValuesBox');
+  if (cardMissingBox) {
+    cardMissingBox.addEventListener('click', () => {
+      switchTab('tab-dataset');
+      setDatasetFilter('missing');
+      showToast('Filtered table to rows containing missing values', 'info');
+    });
+  }
+
+  const cardDupBox = document.getElementById('cardDuplicateRowsBox');
+  if (cardDupBox) {
+    cardDupBox.addEventListener('click', () => {
+      switchTab('tab-dataset');
+      setDatasetFilter('duplicates');
+      showToast('Filtered table to duplicate records', 'info');
+    });
+  }
+
+  // Missing & Duplicate Values Diagnostic Toolbar
+  const btnRefreshDiag = document.getElementById('btnRefreshDiagnostic');
+  if (btnRefreshDiag) {
+    btnRefreshDiag.addEventListener('click', async () => {
+      showToast('Refreshing missing and duplicate diagnostics...', 'info');
+      await fetchMissingAndDuplicateDiagnostics();
+      showToast('Diagnostic audit updated!', 'success');
+    });
+  }
+
+  const btnQuickRemDups = document.getElementById('btnQuickRemoveDups');
+  if (btnQuickRemDups) {
+    btnQuickRemDups.addEventListener('click', handleQuickRemoveDuplicates);
+  }
+
+  const btnQuickImpMiss = document.getElementById('btnQuickImputeMissing');
+  if (btnQuickImpMiss) {
+    btnQuickImpMiss.addEventListener('click', handleQuickImputeMissing);
+  }
+
+  const btnQuickDropRows = document.getElementById('btnQuickDropMissingRows');
+  if (btnQuickDropRows) {
+    btnQuickDropRows.addEventListener('click', handleQuickDropMissingRows);
+  }
+
+  const btnQuickRst = document.getElementById('btnQuickReset');
+  if (btnQuickRst) {
+    btnQuickRst.addEventListener('click', () => handleResetDataset(false));
+  }
+
   // Data Cleaning Controls
   const btnExecuteClean = document.getElementById('btnExecuteCleaning');
   if (btnExecuteClean) {
@@ -161,7 +244,7 @@ function setupEventListeners() {
 
   const btnResetClean = document.getElementById('btnResetCleaning');
   if (btnResetClean) {
-    btnResetClean.addEventListener('click', handleResetDataset);
+    btnResetClean.addEventListener('click', () => handleResetDataset(false));
   }
 
   // Report Download Buttons
@@ -250,6 +333,7 @@ async function loadFullDashboard() {
       fetchStatistics(),
       fetchCorrelations(),
       fetchVisualizations(),
+      fetchMissingAndDuplicateDiagnostics(),
       fetchReport()
     ]);
   } catch (err) {
@@ -321,9 +405,20 @@ async function fetchSummary() {
   }
 }
 
+function setDatasetFilter(filterType) {
+  AppState.dataset.activeFilter = filterType;
+  AppState.dataset.currentPage = 1;
+
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-filter') === filterType);
+  });
+
+  fetchDatasetRecords();
+}
+
 async function fetchDatasetRecords() {
   try {
-    const { currentPage, perPage, searchQuery, sortCol, sortDir } = AppState.dataset;
+    const { currentPage, perPage, searchQuery, sortCol, sortDir, activeFilter } = AppState.dataset;
     const url = new URL(`${API_BASE}/api/data`);
     url.searchParams.set('page', currentPage);
     url.searchParams.set('per_page', perPage);
@@ -331,6 +426,9 @@ async function fetchDatasetRecords() {
     if (sortCol) {
       url.searchParams.set('sort_col', sortCol);
       url.searchParams.set('sort_dir', sortDir);
+    }
+    if (activeFilter && activeFilter !== 'all') {
+      url.searchParams.set('filter', activeFilter);
     }
 
     const res = await fetch(url);
@@ -356,8 +454,26 @@ function renderDatasetTable(data) {
   const thead = document.getElementById('datasetTableHead');
   const tbody = document.getElementById('datasetTableBody');
 
+  // Update Filter Pill counts
+  const countAll = document.getElementById('countPillAll');
+  if (countAll && typeof data.total_dataset_rows === 'number') {
+    countAll.textContent = data.total_dataset_rows.toLocaleString();
+  }
+  const countMissing = document.getElementById('countPillMissing');
+  if (countMissing && typeof data.total_missing_rows === 'number') {
+    countMissing.textContent = data.total_missing_rows.toLocaleString();
+  }
+  const countDuplicates = document.getElementById('countPillDuplicates');
+  if (countDuplicates && typeof data.total_duplicate_rows === 'number') {
+    countDuplicates.textContent = data.total_duplicate_rows.toLocaleString();
+  }
+  const countComplete = document.getElementById('countPillComplete');
+  if (countComplete && typeof data.total_complete_rows === 'number') {
+    countComplete.textContent = data.total_complete_rows.toLocaleString();
+  }
+
   // Build Table Header
-  let headHtml = '<tr><th style="width: 45px;">#</th>';
+  let headHtml = '<tr><th style="width: 55px;">#</th>';
   data.columns.forEach(col => {
     const isSorted = AppState.dataset.sortCol === col;
     const icon = isSorted ? (AppState.dataset.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -378,15 +494,28 @@ function renderDatasetTable(data) {
   const totalPages = data.total_pages || 1;
 
   if (records.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${(data.columns ? data.columns.length : 0) + 1}" class="text-center text-muted py-5">No records matching query.</td></tr>`;
+    const colSpan = (data.columns ? data.columns.length : 0) + 1;
+    const filterName = AppState.dataset.activeFilter || 'all';
+    let emptyMsg = 'No records matching search query.';
+    if (filterName === 'missing') emptyMsg = '🎉 No records with missing values! Dataset is completely filled.';
+    else if (filterName === 'duplicates') emptyMsg = '✨ Zero duplicate records detected! Dataset rows are distinct.';
+    else if (filterName === 'complete') emptyMsg = 'No complete records found matching criteria.';
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-5">${emptyMsg}</td></tr>`;
   } else {
     let rowsHtml = '';
     records.forEach((row, i) => {
-      rowsHtml += `<tr><td class="text-muted mono">${startIdx + i + 1}</td>`;
+      const isDup = Boolean(row._is_duplicate);
+      const hasMissing = Boolean(row._has_missing);
+      let rowClasses = [];
+      if (isDup) rowClasses.push('row-is-duplicate');
+      if (hasMissing) rowClasses.push('row-has-missing');
+
+      const dupBadge = isDup ? `<span class="badge-duplicate" title="Duplicate record across all columns">DUP</span>` : '';
+      rowsHtml += `<tr class="${rowClasses.join(' ')}"><td class="text-muted mono">${dupBadge}${startIdx + i + 1}</td>`;
       data.columns.forEach(col => {
         const val = row[col];
         if (val === null || val === undefined) {
-          rowsHtml += `<td><span class="badge badge-secondary" title="Missing value">null</span></td>`;
+          rowsHtml += `<td><span class="cell-missing" title="Missing value (NaN)">NaN</span></td>`;
         } else if (typeof val === 'number') {
           rowsHtml += `<td class="num-cell">${val.toLocaleString()}</td>`;
         } else {
@@ -418,8 +547,14 @@ function renderDatasetTable(data) {
   }
   const datasetCountSummaryEl = document.getElementById('datasetCountSummary');
   if (datasetCountSummaryEl) {
+    const filterName = AppState.dataset.activeFilter || 'all';
+    let filterDesc = '';
+    if (filterName === 'missing') filterDesc = ' • Filtered by: Incomplete Rows with Missing Values';
+    else if (filterName === 'duplicates') filterDesc = ' • Filtered by: Duplicate Rows';
+    else if (filterName === 'complete') filterDesc = ' • Filtered by: 100% Complete Records';
+
     datasetCountSummaryEl.textContent =
-      `Displaying ${totalRecords.toLocaleString()} total filtered records from ${data.filename || 'dataset'}`;
+      `Displaying ${totalRecords.toLocaleString()} records from ${data.filename || 'dataset'}${filterDesc}`;
   }
 }
 
@@ -1793,14 +1928,7 @@ async function handleExecuteCleaning() {
     showToast('Data cleaning transformations applied successfully!', 'success');
 
     // Refresh entire dashboard with updated cleaned dataset
-    await Promise.all([
-      fetchSummary(),
-      fetchDatasetRecords(),
-      fetchStatistics(),
-      fetchCorrelations(),
-      fetchVisualizations(),
-      fetchReport()
-    ]);
+    await loadFullDashboard();
 
   } catch (err) {
     console.error('Cleaning failed:', err);
@@ -1891,20 +2019,45 @@ async function handleFileUpload(e) {
   }
 }
 
-async function handleResetDataset() {
-  showLoading('Restoring original dataset...');
+async function handleResetDataset(reloadSample = false) {
+  showLoading(reloadSample ? 'Reloading default sample dataset...' : 'Restoring original uncleaned dataset...');
   try {
-    const res = await fetch(`${API_BASE}/api/reset`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/api/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reload_sample: reloadSample })
+    });
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
-    showToast('Dataset reset to original state.', 'success');
-    document.getElementById('cleaningAuditCard').style.display = 'none';
+    showToast(json.message || 'Dataset restored to original state.', 'success');
+    const auditCard = document.getElementById('cleaningAuditCard');
+    if (auditCard) auditCard.style.display = 'none';
 
+    // Reset dataset view, search, and filter pills
     AppState.dataset.currentPage = 1;
     AppState.dataset.searchQuery = '';
+    AppState.dataset.activeFilter = 'all';
+    document.querySelectorAll('.filter-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-filter') === 'all');
+    });
+
     const sInput = document.getElementById('datasetSearchInput');
     if (sInput) sInput.value = '';
+
+    // Reset cleaning form checkboxes
+    const cDups = document.getElementById('cleanRemoveDups');
+    if (cDups) cDups.checked = true;
+    const cNum = document.getElementById('cleanFillNumeric');
+    if (cNum) cNum.checked = true;
+    const cCat = document.getElementById('cleanFillCat');
+    if (cCat) cCat.checked = true;
+    const cEmpty = document.getElementById('cleanDropEmptyCols');
+    if (cEmpty) cEmpty.checked = false;
+    const cDropRows = document.getElementById('cleanDropMissingRows');
+    if (cDropRows) cDropRows.checked = false;
+    const cTypes = document.getElementById('cleanConvertTypes');
+    if (cTypes) cTypes.checked = true;
 
     await loadFullDashboard();
 
@@ -1915,6 +2068,187 @@ async function handleResetDataset() {
     hideLoading();
   }
 }
+
+// ============================================================================
+// MISSING VALUES & DUPLICATES DIAGNOSTICS & QUICK ACTIONS
+// ============================================================================
+
+async function fetchMissingAndDuplicateDiagnostics() {
+  try {
+    const res = await fetch(`${API_BASE}/api/missing-values`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    const data = json.data;
+    const summary = AppState.summary || {};
+    const totalRows = summary.total_rows || (data.columns && data.columns.length > 0 ? (data.columns[0].non_null_count + data.columns[0].missing_count) : 0);
+
+    // Diagnostic stat boxes
+    const diagMissingCells = document.getElementById('diagMissingCells');
+    if (diagMissingCells) diagMissingCells.textContent = (data.total_missing_cells || 0).toLocaleString();
+
+    const diagMissingPct = document.getElementById('diagMissingPct');
+    if (diagMissingPct) diagMissingPct.textContent = `${data.overall_missing_percentage || 0}% of all cells`;
+
+    const rowsWithMissing = Math.max(0, totalRows - (data.complete_cases || 0));
+    const diagMissingRows = document.getElementById('diagMissingRows');
+    if (diagMissingRows) diagMissingRows.textContent = rowsWithMissing.toLocaleString();
+
+    const diagMissingRowsPct = document.getElementById('diagMissingRowsPct');
+    if (diagMissingRowsPct) {
+      const pct = totalRows > 0 ? ((rowsWithMissing / totalRows) * 100).toFixed(1) : '0';
+      diagMissingRowsPct.textContent = `${pct}% of records`;
+    }
+
+    const diagDuplicateRows = document.getElementById('diagDuplicateRows');
+    if (diagDuplicateRows) diagDuplicateRows.textContent = (data.duplicate_rows || 0).toLocaleString();
+
+    const diagDuplicateStatus = document.getElementById('diagDuplicateStatus');
+    if (diagDuplicateStatus) {
+      diagDuplicateStatus.textContent = data.duplicate_rows === 0 ? 'Zero duplicates' : `${data.duplicate_rows} duplicate record(s)`;
+    }
+
+    const diagCompleteCases = document.getElementById('diagCompleteCases');
+    if (diagCompleteCases) diagCompleteCases.textContent = (data.complete_cases || 0).toLocaleString();
+
+    const diagCompleteCasesPct = document.getElementById('diagCompleteCasesPct');
+    if (diagCompleteCasesPct) {
+      const compPct = totalRows > 0 ? (((data.complete_cases || 0) / totalRows) * 100).toFixed(1) : '100';
+      diagCompleteCasesPct.textContent = `${compPct}% clean rows`;
+    }
+
+    // Per-column missing breakdown table
+    const tbody = document.getElementById('missingTableBody');
+    if (tbody && data.columns) {
+      if (data.columns.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No column data available.</td></tr>';
+      } else {
+        let html = '';
+        data.columns.forEach(col => {
+          const completeness = Math.max(0, 100 - (col.missing_percentage || 0)).toFixed(1);
+          const hasMissing = col.missing_count > 0;
+          const isNum = col.dtype.includes('int') || col.dtype.includes('float');
+          const quickActionBtn = hasMissing
+            ? `<button class="btn btn-sm btn-outline" style="padding: 2px 8px; font-size: 11px;" onclick="handleQuickImputeSingleColumn('${col.column}', '${isNum ? 'mean' : 'mode'}')" title="Impute ${col.column}">Fill with ${isNum ? 'Mean' : 'Mode'}</button>`
+            : `<span class="badge badge-success">100% Complete</span>`;
+
+          html += `
+            <tr>
+              <td><strong>${escapeHtml(col.column)}</strong></td>
+              <td><span class="badge ${isNum ? 'badge-primary' : 'badge-secondary'}">${col.dtype}</span></td>
+              <td class="${hasMissing ? 'text-amber font-bold' : 'text-muted'}">${col.missing_count.toLocaleString()}</td>
+              <td>${col.missing_percentage}%</td>
+              <td>${col.non_null_count.toLocaleString()}</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div class="completeness-bar-wrap" style="flex: 1;">
+                    <div class="completeness-fill" style="width: ${completeness}%;"></div>
+                  </div>
+                  <span style="font-size: 11px; font-weight: 600; width: 38px;">${completeness}%</span>
+                </div>
+              </td>
+              <td>${quickActionBtn}</td>
+            </tr>
+          `;
+        });
+        tbody.innerHTML = html;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching missing values diagnostic:', err);
+  }
+}
+
+async function handleQuickRemoveDuplicates() {
+  showLoading('Executing Pandas drop_duplicates()...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actions: ['remove_duplicates'] })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast(json.data.logs[0] || 'Duplicate rows removed!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function handleQuickImputeMissing() {
+  showLoading('Imputing missing values across numeric & categorical features...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actions: ['fill_missing_numerical', 'fill_missing_categorical'],
+        numeric_strategy: 'mean',
+        categorical_strategy: 'mode'
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast('Missing values successfully imputed with mean and mode!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function handleQuickDropMissingRows() {
+  if (!confirm('Are you sure you want to drop all rows containing missing values?')) return;
+  showLoading('Dropping incomplete rows (dropna)...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actions: ['drop_missing_rows'] })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast('Incomplete records dropped!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+window.handleQuickImputeSingleColumn = async function(columnName, strategy) {
+  showLoading(`Imputing column '${columnName}' with ${strategy}...`);
+  try {
+    const action = (strategy === 'mode') ? 'fill_missing_categorical' : 'fill_missing_numerical';
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actions: [action],
+        target_column: columnName,
+        numeric_strategy: strategy,
+        categorical_strategy: strategy
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast(`Column '${columnName}' imputed successfully!`, 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+};
 
 // ============================================================================
 // REPORTS MODULE

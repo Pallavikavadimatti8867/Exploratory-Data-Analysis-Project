@@ -299,10 +299,29 @@ def get_data():
       - search: filter keyword
       - sort_col: column name
       - sort_dir: 'asc' or 'desc'
+      - filter: 'all', 'missing', 'duplicates', or 'complete'
     """
     try:
         df = get_active_df()
         filtered_df = df.copy()
+
+        # Precompute total counts for metadata
+        total_missing_rows_count = int(df.isna().any(axis=1).sum())
+        total_duplicate_rows_count = int(df.duplicated(keep=False).sum())
+        total_complete_rows_count = int((~df.isna().any(axis=1)).sum())
+
+        # Duplicate and missing row index sets for rapid lookup
+        dup_indices = set(df[df.duplicated(keep=False)].index)
+        missing_indices = set(df[df.isna().any(axis=1)].index)
+
+        # Handle filter preset (all, missing, duplicates, complete)
+        row_filter = request.args.get('filter', 'all').strip().lower()
+        if row_filter == 'missing':
+            filtered_df = filtered_df[filtered_df.isna().any(axis=1)]
+        elif row_filter == 'duplicates':
+            filtered_df = filtered_df[filtered_df.duplicated(keep=False)]
+        elif row_filter == 'complete':
+            filtered_df = filtered_df[~filtered_df.isna().any(axis=1)]
 
         # Handle global search
         search_query = request.args.get('search', '').strip()
@@ -329,12 +348,15 @@ def get_data():
         end_idx = start_idx + per_page
         paginated_df = filtered_df.iloc[start_idx:end_idx]
 
-        # Convert records to dictionary, ensuring NaNs become None
+        # Convert records to dictionary, ensuring NaNs become None and marking flags
         records = []
-        for _, row in paginated_df.iterrows():
+        for orig_idx, row in paginated_df.iterrows():
             row_dict = {}
             for col in df.columns:
                 row_dict[col] = clean_val_for_json(row[col])
+            row_dict['_is_duplicate'] = bool(orig_idx in dup_indices)
+            row_dict['_has_missing'] = bool(orig_idx in missing_indices)
+            row_dict['_original_index'] = int(orig_idx)
             records.append(row_dict)
 
         # Build column stats summary
@@ -359,6 +381,10 @@ def get_data():
                 'total_records': total_records,
                 'total_dataset_rows': len(df),
                 'total_columns': len(df.columns),
+                'total_missing_rows': total_missing_rows_count,
+                'total_duplicate_rows': total_duplicate_rows_count,
+                'total_complete_rows': total_complete_rows_count,
+                'active_filter': row_filter,
                 'current_page': page,
                 'per_page': per_page,
                 'total_pages': total_pages,
@@ -1154,9 +1180,14 @@ def clean_dataset():
             else:
                 log_messages.append("No completely empty columns found")
 
+        target_col = req_data.get('target_column')
+
         # 3. Fill missing numerical values
         if 'fill_missing_numerical' in actions:
-            num_cols = cleaned_df.select_dtypes(include=[np.number]).columns
+            if target_col and target_col in cleaned_df.columns:
+                num_cols = [target_col]
+            else:
+                num_cols = cleaned_df.select_dtypes(include=[np.number]).columns
             filled_num = 0
             for col in num_cols:
                 n_miss = cleaned_df[col].isna().sum()
@@ -1165,11 +1196,15 @@ def clean_dataset():
                     if not pd.isna(fill_val):
                         cleaned_df[col] = cleaned_df[col].fillna(round(fill_val, 2))
                         filled_num += int(n_miss)
-            log_messages.append(f"Imputed {filled_num} missing numerical value(s) using {num_strategy}")
+            scope_str = f" in '{target_col}'" if target_col else ""
+            log_messages.append(f"Imputed {filled_num} missing numerical value(s){scope_str} using {num_strategy}")
 
         # 4. Fill missing categorical values
         if 'fill_missing_categorical' in actions:
-            cat_cols = cleaned_df.select_dtypes(exclude=[np.number]).columns
+            if target_col and target_col in cleaned_df.columns:
+                cat_cols = [target_col]
+            else:
+                cat_cols = cleaned_df.select_dtypes(exclude=[np.number]).columns
             filled_cat = 0
             for col in cat_cols:
                 n_miss = cleaned_df[col].isna().sum()
@@ -1181,7 +1216,8 @@ def clean_dataset():
                         fill_val = 'Unknown'
                     cleaned_df[col] = cleaned_df[col].fillna(fill_val)
                     filled_cat += int(n_miss)
-            log_messages.append(f"Imputed {filled_cat} missing categorical value(s) using {cat_strategy}")
+            scope_str = f" in '{target_col}'" if target_col else ""
+            log_messages.append(f"Imputed {filled_cat} missing categorical value(s){scope_str} using {cat_strategy}")
 
         # 5. Drop rows with missing values
         if 'drop_missing_rows' in actions:
@@ -1255,9 +1291,17 @@ def reset_dataset():
     """
     POST /api/reset
     Restores dataset to the original uploaded version or sample_sales.csv.
+    Supports JSON {"reload_sample": true} or query ?reload_sample=true.
     """
     try:
-        if CURRENT_DATASET.get('original_df') is not None:
+        req_json = request.get_json(silent=True) or {}
+        force_sample = req_json.get('reload_sample') or request.args.get('reload_sample') == 'true'
+
+        if force_sample or CURRENT_DATASET.get('original_df') is None:
+            sample_file = os.path.join(DATA_FOLDER, 'sample_sales.csv')
+            df = load_dataset(sample_file, 'sample_sales.csv')
+            msg = 'Default retail sales sample dataset reloaded successfully'
+        else:
             CURRENT_DATASET['df'] = CURRENT_DATASET['original_df'].copy()
             CURRENT_DATASET['history'].append({
                 'action': 'Reset to Original',
@@ -1265,17 +1309,21 @@ def reset_dataset():
                 'rows': int(len(CURRENT_DATASET['df'])),
                 'cols': int(len(CURRENT_DATASET['df'].columns))
             })
-            return jsonify({
-                'success': True,
-                'message': 'Dataset successfully reset to original state'
-            })
-        else:
-            sample_file = os.path.join(DATA_FOLDER, 'sample_sales.csv')
-            load_dataset(sample_file, 'sample_sales.csv')
-            return jsonify({
-                'success': True,
-                'message': 'Default sample dataset reloaded successfully'
-            })
+            df = CURRENT_DATASET['df']
+            msg = 'Dataset successfully restored to original uncleaned state'
+
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'data': {
+                'total_rows': int(len(df)),
+                'total_columns': int(len(df.columns)),
+                'missing_values': int(df.isna().sum().sum()),
+                'duplicate_rows': int(df.duplicated().sum()),
+                'quality_score': calculate_data_quality_score(df),
+                'filename': CURRENT_DATASET.get('filename', 'dataset.csv')
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f"Reset failed: {str(e)}"}), 500
 
