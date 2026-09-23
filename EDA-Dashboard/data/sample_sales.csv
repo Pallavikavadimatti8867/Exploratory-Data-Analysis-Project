@@ -1,0 +1,75 @@
+ID,Product,Category,Sales,Quantity,Rating,Order_Date,Customer_ID
+1001,Wireless Headphones,Electronics,149.99,2,4.5,2024-01-15,CUST-501
+1002,Smart Watch Pro,Electronics,299.00,1,4.8,2024-01-16,CUST-502
+1003,Ergonomic Office Chair,Furniture,210.50,1,4.2,2024-01-18,CUST-503
+1004,Cotton Crewneck T-Shirt,Apparel,24.99,3,4.0,2024-01-20,CUST-504
+1005,Mechanical Gaming Keyboard,Electronics,89.95,2,4.7,2024-01-22,CUST-505
+1006,Stainless Steel Water Bottle,Fitness,19.50,4,4.6,2024-01-25,CUST-506
+1007,Running Shoes Speed-X,Footwear,129.99,1,4.3,2024-01-28,CUST-507
+1008,Noise Cancelling Earbuds,Electronics,79.99,2,3.9,2024-02-02,CUST-508
+1009,Ceramic Coffee Mug Set,Kitchen,34.00,2,4.4,2024-02-05,CUST-509
+1010,Standing Desk Converter,Furniture,189.00,1,4.5,2024-02-08,CUST-510
+1011,Denim Jacket Classic,Apparel,69.50,1,4.1,2024-02-12,CUST-511
+1012,Yoga Mat Non-Slip,Fitness,29.99,3,4.8,2024-02-15,CUST-512
+1013,Bluetooth Portable Speaker,Electronics,59.99,2,4.2,2024-02-18,CUST-513
+1014,Non-Stick Frying Pan,Kitchen,45.00,1,4.0,2024-02-22,CUST-514
+1015,Leather Bi-fold Wallet,Accessories,39.95,2,4.6,2024-02-25,CUST-515
+1016,Ultralight Backpack,Fitness,55.00,1,4.3,2024-03-01,CUST-516
+1017,4K Ultra HD Monitor 27-inch,Electronics,349.99,1,4.9,2024-03-04,CUST-517
+1018,Organic Cotton Bed Sheets,Home,85.00,2,4.5,2024-03-07,CUST-518
+1019,Trail Running Shoes,Footwear,115.00,1,4.2,2024-03-11,CUST-519
+1020,LED Desk Lamp with USB,Furniture,32.50,2,4.4,2024-03-14,CUST-520
+1021,Stainless Steel Chef Knife,Kitchen,54.99,1,4.7,2024-03-18,CUST-521
+1022,Wireless Mouse Silent,Electronics,27.99,3,4.3,2024-03-21,CUST-522
+1023,Wool Blend Winter Scarf,Accessories,22.00,2,4.1,2024-03-24,CUST-523
+1024,Resistance Bands Set,Fitness,18.99,4,4.7,2024-03-28,CUST-524
+1025,Smart WiFi Thermostat,Electronics,129.00,1,4.6,2024-04-02,CUST-525
+1026,Air Fryer Digital 5.8Qt,Kitchen,99.99,1,4.8,2024-04-05,CUST-526
+1027,Polarized Sunglasses,Accessories,48.00,2,4.2,2024-04-08,CUST-527
+1028,Classic Canvas Sneakers,Footwear,59.95,2,4.0,2024-04-12,CUST-528
+1029,Adjustable Dumbbell Set,Fitness,199.99,1,4.9,2024-04-16,CUST-529
+1030,Bamboo Cutting Board 3-Piece,Kitchen,28.50,2,4.5,2024-04-20,CUST-530
+1031,Fast Wireless Charger,Electronics,25.99,3,4.1,2024-04-23,CUST-531
+1032,Fleece Pullover Hoodie,Apparel,42.00,2,4.4,2024-04-26,CUST-532
+1033,Memory Foam Pillow,Home,38.00,2,4.3,2024-04-30,CUST-533
+1034,Smart LED Light Bulbs 4-Pack,Electronics,39.99,2,4.5,2024-05-04,CUST-534
+1035,Electric Pour-Over Kettle,Kitchen,64.95,1,4.7,2024-05-08,CUST-535
+1036,Cycling Helmet Aerodynamic,Fitness,75.00,1,4.6,2024-05-12,CUST-536
+1037,Compact Umbrella Windproof,Accessories,19.99,3,4.0,2024-05-15,CUST-537
+1038,Graphic Print Hoodie,Apparel,48.00,1,4.2,2024-05-19,CUST-538
+1039,Noise Isolating Studio Mic,Electronics,119.00,1,4.8,2024-05-22,CUST-539
+1040,Insulated Lunch Box,Kitchen,21.50,2,4.3,2024-05-26,CUST-540
+1041,Minimalist Leather Watch,Accessories,110.00,1,4.5,2024-05-30,CUST-541
+1042,Foam Roller Deep Tissue,Fitness,22.95,2,4.6,2024-06-03,CUST-542
+1043,High-Top Basketball Shoes,Footwear,135.00,1,4.4,2024-06-07,CUST-543
+1044,Mesh Task Office Chair,Furniture,145.00,1,4.1,2024-06-10,CUST-544
+1045,True Wireless Gaming Earbuds,Electronics,69.99,2,4.3,2024-06-14,CUST-545
+1046,Cast Iron Skillet 12-inch,Kitchen,36.00,1,4.8,2024-06-18,CUST-546
+1047,Slim Fit Chino Pants,Apparel,52.00,2,4.2,2024-06-22,CUST-547
+1048,Hard-Shell Travel Suitcase,Accessories,139.99,1,4.7,2024-06-25,CUST-548
+1049,Smart Fitness Tracker Ring,Electronics,189.95,1,4.6,2024-06-29,CUST-549
+1050,Scented Soy Candle Trio,Home,26.00,3,4.4,2024-07-03,CUST-550
+1051,Stainless Steel French Press,Kitchen,32.00,2,4.5,2024-07-06,CUST-551
+1052,Ankle Running Socks 6-Pack,Footwear,16.50,4,4.7,2024-07-10,CUST-552
+1053,USB-C Docking Station Triple Display,Electronics,119.99,1,4.4,2024-07-14,CUST-553
+1054,Linen Table Runner,Home,24.00,2,4.0,2024-07-18,CUST-554
+1055,Hydration Running Vest,Fitness,49.95,1,4.5,2024-07-22,CUST-555
+1056,Athletic Performance Shorts,Apparel,31.00,2,4.3,2024-07-25,CUST-556
+1057,Webcam 1080P with Privacy Cover,Electronics,49.99,1,4.2,2024-07-29,CUST-557
+1058,Vacuum Insulated Food Jar,Kitchen,23.50,2,4.6,2024-08-02,CUST-558
+1059,Casual Slip-On Loafers,Footwear,79.00,1,4.1,2024-08-06,CUST-559
+1060,Adjustable Laptop Stand,Furniture,29.99,2,4.8,2024-08-10,CUST-560
+1061,External Portable SSD 1TB,Electronics,99.95,1,4.9,2024-08-14,CUST-561
+1062,Microfiber Cleaning Cloths 12-Pack,Home,14.99,3,4.7,2024-08-18,CUST-562
+1063,Breathable Gym Tank Top,Apparel,18.00,3,4.2,2024-08-21,CUST-563
+1064,Barista Milk Frother,Kitchen,38.99,1,4.5,2024-08-25,CUST-564
+1065,Speed Jump Rope Cable,Fitness,12.50,4,4.4,2024-08-29,CUST-565
+1066,Smart Surge Protector Power Strip,Electronics,34.50,2,4.6,2024-09-02,CUST-566
+1067,Canvas Weekend Duffle Bag,Accessories,65.00,1,4.3,2024-09-06,CUST-567
+1068,Sandals Ergonomic Slide,Footwear,35.00,2,3.9,2024-09-10,CUST-568
+1069,Desktop Bookshelf Organizer,Furniture,27.50,1,4.2,2024-09-14,CUST-569
+1070,Touchscreen Digital Food Scale,Kitchen,19.99,2,4.7,2024-09-18,CUST-570
+1071,Wireless In-Ear Earphones,Electronics,,2,4.2,2024-09-20,CUST-571
+1072,Soft Flannel Blanket,Home,29.95,,4.5,2024-09-21,CUST-572
+1073,Vintage Denim Jeans,Apparel,58.00,1,,2024-09-22,CUST-573
+1070,Touchscreen Digital Food Scale,Kitchen,19.99,2,4.7,2024-09-18,CUST-570

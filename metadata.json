@@ -1,0 +1,6 @@
+{
+  "name": "Exploratory Data Analysis (EDA) Dashboard",
+  "description": "Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Exploratory Data Analysis (EDA) Dashboard</title>
+  <meta name="description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
+  <meta property="og:title" content="Exploratory Data Analysis (EDA) Dashboard">
+  <meta property="og:description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
+  <meta property="og:type" content="website">
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- Custom Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- App Layout Container -->
+  <div class="app-layout">
+    <!-- Sidebar Navigation -->
+    <aside class="sidebar">
+      <div class="sidebar-brand">
+        <div class="brand-icon">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </div>
+        <div class="brand-text">
+          <h2>EDA Studio</h2>
+          <span>Analytics Engine</span>
+        </div>
+      </div>
+
+      <nav class="sidebar-nav">
+        <button class="nav-item active" data-tab="tab-dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="7" height="9"></rect>
+            <rect x="14" y="3" width="7" height="5"></rect>
+            <rect x="14" y="12" width="7" height="9"></rect>
+            <rect x="3" y="16" width="7" height="5"></rect>
+          </svg>
+          <span>Dashboard</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-dataset">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18M15 3v18"/>
+          </svg>
+          <span>Dataset Preview</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-visualizations">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.21 15.89A10 10 0 1 1 8 2.83"></path>
+            <path d="M22 12A10 10 0 0 0 12 2v10z"></path>
+          </svg>
+          <span>Visualizations</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-statistics">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <polyline points="14 2 14 8 20 8"></polyline>
+            <line x1="16" y1="13" x2="8" y2="13"></line>
+            <line x1="16" y1="17" x2="8" y2="17"></line>
+            <polyline points="10 9 9 9 8 9"></polyline>
+          </svg>
+          <span>Statistics</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-correlation">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="18" cy="5" r="3"></circle>
+            <circle cx="6" cy="12" r="3"></circle>
+            <circle cx="18" cy="19" r="3"></circle>
+            <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+            <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
+          </svg>
+          <span>Correlation</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-cleaning">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m2 22 1-1h3l9-9M13 6l3 3M17.5 4.5l2 2a2.12 2.12 0 0 1 0 3l-8.5 8.5H7v-4l8.5-8.5a2.12 2.12 0 0 1 3 0Z"></path>
+          </svg>
+          <span>Data Cleaning</span>
+        </button>
+
+        <button class="nav-item" data-tab="tab-reports">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+            <path d="M14 2v6h6"></path>
+            <path d="M16 13H8"></path>
+            <path d="M16 17H8"></path>
+            <path d="M10 9H8"></path>
+          </svg>
+          <span>Reports</span>
+        </button>
+      </nav>
+
+      <!-- Sidebar Footer Info -->
+      <div class="sidebar-footer">
+        <div class="system-status">
+          <span class="status-indicator live"></span>
+          <span>Flask REST API Active</span>
+        </div>
+        <p class="build-info">Python 3 &bull; Pandas &bull; Chart.js</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <!-- Top Application Header -->
+      <header class="app-header">
+        <div class="header-titles">
+          <h1>Exploratory Data Analysis Dashboard</h1>
+          <p class="subtitle">Interactive Data Analysis & Visualization Platform</p>
+        </div>
+
+        <div class="header-actions">
+          <!-- Active Dataset Badge -->
+          <div class="active-file-badge" id="activeFileBadge" title="Currently Loaded Dataset">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+              <polyline points="13 2 13 9 20 9"></polyline>
+            </svg>
+            <span id="activeFileName">sample_sales.csv</span>
+          </div>
+
+          <!-- Reset / Reload Sample Button -->
+          <button class="btn btn-outline" id="btnResetDataset" title="Reset dataset to original state">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+              <path d="M3 3v5h5"></path>
+            </svg>
+            <span>Reset</span>
+          </button>
+
+          <!-- Upload CSV Button Trigger -->
+          <label class="btn btn-primary upload-btn-label" for="csvFileInput" id="uploadBtn">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="17 8 12 3 7 8"></polyline>
+              <line x1="12" y1="3" x2="12" y2="15"></line>
+            </svg>
+            <span>Upload CSV</span>
+            <input type="file" id="csvFileInput" accept=".csv" style="display: none;">
+          </label>
+        </div>
+      </header>
+
+      <!-- Global Notification Toast Container -->
+      <div id="toastContainer" class="toast-container"></div>
+
+      <!-- Main Body Tabs Container -->
+      <div class="content-body">
+
+        <!-- ======================================================== -->
+        <!-- TAB 1: DASHBOARD OVERVIEW -->
+        <!-- ======================================================== -->
+        <section class="tab-pane active" id="tab-dashboard">
+          <!-- Summary Metric Cards -->
+          <div class="metric-cards-grid">
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-label">Total Records</span>
+                <div class="metric-icon-wrap icon-blue">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                </div>
+              </div>
+              <div class="metric-value" id="cardTotalRecords">--</div>
+              <div class="metric-subtext" id="cardMemoryUsage">Memory: --</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-label">Total Columns</span>
+                <div class="metric-icon-wrap icon-indigo">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+                </div>
+              </div>
+              <div class="metric-value" id="cardTotalColumns">--</div>
+              <div class="metric-subtext" id="cardColumnSplit">-- Numeric &bull; -- Categorical</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-label">Missing Values</span>
+                <div class="metric-icon-wrap icon-amber">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                </div>
+              </div>
+              <div class="metric-value" id="cardMissingValues">--</div>
+              <div class="metric-subtext" id="cardMissingRate">-- of total cells</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-label">Duplicate Rows</span>
+                <div class="metric-icon-wrap icon-rose">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                </div>
+              </div>
+              <div class="metric-value" id="cardDuplicateRows">--</div>
+              <div class="metric-subtext" id="cardDuplicateStatus">Status: Checked</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-header">
+                <span class="metric-label">Average Value</span>
+                <div class="metric-icon-wrap icon-emerald">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                </div>
+              </div>
+              <div class="metric-value" id="cardAverageValue">--</div>
+              <div class="metric-subtext" id="cardValueRange">Min: -- &bull; Max: --</div>
+            </div>
+
+            <div class="metric-card quality-card">
+              <div class="metric-header">
+                <span class="metric-label">Data Quality Score</span>
+                <div class="metric-icon-wrap icon-teal">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                </div>
+              </div>
+              <div class="quality-display">
+                <div class="metric-value" id="cardQualityScore">--%</div>
+                <div class="quality-rating-text" id="cardQualityRating">Calculating...</div>
+              </div>
+              <!-- Progress Bar -->
+              <div class="quality-progress-bar-wrap">
+                <div class="quality-progress-fill" id="qualityProgressFill" style="width: 0%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Quick Analytics Visuals Row -->
+          <div class="dash-grid-two">
+            <div class="card">
+              <div class="card-header">
+                <h3>Primary Metric by Category</h3>
+                <span class="badge" id="chart1Badge">Automated</span>
+              </div>
+              <div class="chart-container-dash">
+                <canvas id="dashChart1"></canvas>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3>Category Distribution Breakdown</h3>
+                <span class="badge" id="chart3Badge">Composition</span>
+              </div>
+              <div class="chart-container-dash">
+                <canvas id="dashChart3"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dataset Schema Overview Table -->
+          <div class="card mt-4">
+            <div class="card-header">
+              <div>
+                <h3>Feature Architecture & Type Inferences</h3>
+                <p class="card-desc">Automatically detected schema, memory allocation, and completeness</p>
+              </div>
+              <button class="btn btn-sm btn-outline" onclick="switchTab('tab-dataset')">View Full Dataset &rarr;</button>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="schemaOverviewTable">
+                <thead>
+                  <tr>
+                    <th>Column Name</th>
+                    <th>Inferred Type</th>
+                    <th>Non-Null Count</th>
+                    <th>Missing Count</th>
+                    <th>Missing %</th>
+                    <th>Unique Values</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody id="schemaTableBody">
+                  <tr><td colspan="7" class="text-center text-muted">Loading schema metadata...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 2: DATASET PREVIEW -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-dataset">
+          <div class="card">
+            <div class="card-header flex-between flex-wrap gap-3">
+              <div>
+                <h3>Dataset Records Explorer</h3>
+                <p class="card-desc" id="datasetCountSummary">Showing live records with real-time search, sorting, and pagination</p>
+              </div>
+              <!-- Search and Records Filter -->
+              <div class="table-controls">
+                <div class="search-input-wrap">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                  <input type="text" id="datasetSearchInput" placeholder="Search records across all columns...">
+                </div>
+                <div class="select-wrap">
+                  <label for="perPageSelect">Rows:</label>
+                  <select id="perPageSelect">
+                    <option value="10">10</option>
+                    <option value="15" selected>15</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Table with Horizontal Scrolling -->
+            <div class="table-responsive" style="max-height: 540px;">
+              <table class="data-table sticky-header" id="datasetPreviewTable">
+                <thead id="datasetTableHead">
+                  <tr><th>Loading columns...</th></tr>
+                </thead>
+                <tbody id="datasetTableBody">
+                  <tr><td class="text-center text-muted">Fetching records...</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- Pagination Bar -->
+            <div class="pagination-bar">
+              <div class="pagination-info" id="paginationInfo">Showing 0 of 0 records</div>
+              <div class="pagination-controls">
+                <button class="btn btn-sm btn-outline" id="btnPrevPage" disabled>&larr; Previous</button>
+                <span class="page-indicator" id="pageIndicator">Page 1 of 1</span>
+                <button class="btn btn-sm btn-outline" id="btnNextPage" disabled>Next &rarr;</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 3: VISUALIZATIONS -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-visualizations">
+          <div class="section-intro">
+            <h2>Automated Interactive Visualizations</h2>
+            <p>Dynamically constructed visualizations mapped to dataset attributes via Chart.js</p>
+          </div>
+
+          <div class="viz-grid">
+            <!-- Chart 1: Value by Category -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart1Title">Chart 1: Sales/Value by Category</h4>
+                  <p class="chart-subtitle">Aggregated group totals</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart1"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 2: Value by Product / Top Items -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart2Title">Chart 2: Top Products / Items by Sales</h4>
+                  <p class="chart-subtitle">Top 10 highest performing records</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart2"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 3: Category Distribution -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart3Title">Chart 3: Category Distribution</h4>
+                  <p class="chart-subtitle">Share of dataset volume</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart3"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 4: Quantity Distribution -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart4Title">Chart 4: Quantity / Value Distribution</h4>
+                  <p class="chart-subtitle">Binned frequency histogram</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart4"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 5: Rating Distribution -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart5Title">Chart 5: Rating / Score Distribution</h4>
+                  <p class="chart-subtitle">Customer satisfaction frequencies</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart5"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 6: Trend Over Time -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart6Title">Chart 6: Value Trend Over Time</h4>
+                  <p class="chart-subtitle">Temporal chronology line analysis</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart6"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 7: Scatter Plot -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart7Title">Chart 7: Value vs Rating Scatter</h4>
+                  <p class="chart-subtitle">Bivariate feature relationship</p>
+                </div>
+              </div>
+              <div class="chart-box">
+                <canvas id="vizChart7"></canvas>
+              </div>
+            </div>
+
+            <!-- Chart 8: Numerical Correlation Matrix Heatmap -->
+            <div class="card viz-card">
+              <div class="card-header">
+                <div>
+                  <h4 id="chart8Title">Chart 8: Feature Correlation Heatmap</h4>
+                  <p class="chart-subtitle">Pairwise Pearson correlation coefficients</p>
+                </div>
+              </div>
+              <div class="heatmap-container" id="correlationHeatmapContainer">
+                <div class="text-center text-muted py-5">Computing correlation matrix...</div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 4: STATISTICS -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-statistics">
+          <div class="section-intro">
+            <h2>Descriptive Statistics Engine</h2>
+            <p>Comprehensive univariate analysis computed directly with Pandas & NumPy</p>
+          </div>
+
+          <!-- Numerical Statistics Table -->
+          <div class="card mb-4">
+            <div class="card-header">
+              <div>
+                <h3>Numerical Feature Statistics</h3>
+                <p class="card-desc">Central tendency, dispersion, percentiles, skewness, and missing counts</p>
+              </div>
+              <span class="badge badge-info" id="numColsCountBadge">0 Numeric Columns</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="numericalStatsTable">
+                <thead>
+                  <tr>
+                    <th>Column</th>
+                    <th>Count</th>
+                    <th>Mean</th>
+                    <th>Median</th>
+                    <th>Std Dev</th>
+                    <th>Min</th>
+                    <th>25% (Q1)</th>
+                    <th>50% (Q2)</th>
+                    <th>75% (Q3)</th>
+                    <th>Max</th>
+                    <th>IQR</th>
+                    <th>Skewness</th>
+                    <th>Missing</th>
+                  </tr>
+                </thead>
+                <tbody id="numericalStatsBody">
+                  <tr><td colspan="13" class="text-center text-muted">Calculating statistics...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Categorical Statistics Table -->
+          <div class="card">
+            <div class="card-header">
+              <div>
+                <h3>Categorical Feature Statistics</h3>
+                <p class="card-desc">Frequency analysis, top values, cardinalities, and modes</p>
+              </div>
+              <span class="badge badge-indigo" id="catColsCountBadge">0 Categorical Columns</span>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="categoricalStatsTable">
+                <thead>
+                  <tr>
+                    <th>Column</th>
+                    <th>Observed Count</th>
+                    <th>Unique Values</th>
+                    <th>Most Frequent (Mode)</th>
+                    <th>Mode Frequency</th>
+                    <th>Mode %</th>
+                    <th>Missing Values</th>
+                  </tr>
+                </thead>
+                <tbody id="categoricalStatsBody">
+                  <tr><td colspan="7" class="text-center text-muted">Calculating statistics...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 5: CORRELATION -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-correlation">
+          <div class="section-intro">
+            <h2>Correlation Analysis & Collinearity</h2>
+            <p>Pairwise Pearson correlation analysis between all continuous numerical dimensions</p>
+          </div>
+
+          <!-- Correlation Matrix Card -->
+          <div class="card mb-4">
+            <div class="card-header">
+              <div>
+                <h3>Interactive Pearson Correlation Matrix</h3>
+                <p class="card-desc">Values range from -1.0 (inverse relationship) to +1.0 (perfect synchronization)</p>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table correlation-matrix-table" id="corrMatrixTable">
+                <thead id="corrMatrixHead">
+                  <tr><th>Feature</th></tr>
+                </thead>
+                <tbody id="corrMatrixBody">
+                  <tr><td class="text-center text-muted">Calculating correlation matrix...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Categorized Correlations Breakdown -->
+          <div class="dash-grid-three">
+            <!-- Strong Positive -->
+            <div class="card">
+              <div class="card-header">
+                <h4>Strong Positive (r &ge; +0.60)</h4>
+                <span class="badge badge-emerald" id="strongPosCount">0 Pairs</span>
+              </div>
+              <div class="corr-list" id="strongPosList">
+                <p class="text-muted text-sm">No strong positive correlations detected.</p>
+              </div>
+            </div>
+
+            <!-- Strong Negative -->
+            <div class="card">
+              <div class="card-header">
+                <h4>Strong Negative (r &le; -0.60)</h4>
+                <span class="badge badge-rose" id="strongNegCount">0 Pairs</span>
+              </div>
+              <div class="corr-list" id="strongNegList">
+                <p class="text-muted text-sm">No strong negative correlations detected.</p>
+              </div>
+            </div>
+
+            <!-- Moderate & Weak -->
+            <div class="card">
+              <div class="card-header">
+                <h4>Moderate & Weak (|r| &lt; 0.60)</h4>
+                <span class="badge badge-secondary" id="modWeakCount">0 Pairs</span>
+              </div>
+              <div class="corr-list" id="modWeakList">
+                <p class="text-muted text-sm">None detected.</p>
+              </div>
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 6: DATA CLEANING -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-cleaning">
+          <div class="section-intro">
+            <h2>Data Cleaning & Preprocessing Suite</h2>
+            <p>Safely address data hygiene issues with instant before-and-after audit verification</p>
+          </div>
+
+          <!-- Cleaning Action Form -->
+          <div class="card mb-4">
+            <div class="card-header">
+              <div>
+                <h3>Select Cleaning Transformations</h3>
+                <p class="card-desc">Check the transformations to execute. Original data remains preserved unless applied.</p>
+              </div>
+            </div>
+            <div class="cleaning-form-body">
+              <div class="cleaning-options-grid">
+                <!-- Option 1 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanRemoveDups" checked>
+                  <div class="option-text">
+                    <span class="option-title">Remove Duplicate Rows</span>
+                    <span class="option-desc">Drop fully duplicated records to prevent distorted aggregations.</span>
+                  </div>
+                </label>
+
+                <!-- Option 2 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanFillNumeric" checked>
+                  <div class="option-text">
+                    <span class="option-title">Impute Missing Numerical Values</span>
+                    <span class="option-desc">Fill blank numeric cells using statistical central tendency.</span>
+                    <div class="sub-option-select mt-2" onclick="event.stopPropagation()">
+                      <label>Strategy:</label>
+                      <select id="numericStrategySelect">
+                        <option value="mean">Mean (Average)</option>
+                        <option value="median">Median (Robust to Outliers)</option>
+                      </select>
+                    </div>
+                  </div>
+                </label>
+
+                <!-- Option 3 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanFillCat" checked>
+                  <div class="option-text">
+                    <span class="option-title">Impute Missing Categorical Values</span>
+                    <span class="option-desc">Replace missing text fields using mode or standard label.</span>
+                    <div class="sub-option-select mt-2" onclick="event.stopPropagation()">
+                      <label>Strategy:</label>
+                      <select id="catStrategySelect">
+                        <option value="mode">Mode (Most Frequent)</option>
+                        <option value="unknown">Explicit 'Unknown'</option>
+                      </select>
+                    </div>
+                  </div>
+                </label>
+
+                <!-- Option 4 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanDropEmptyCols">
+                  <div class="option-text">
+                    <span class="option-title">Drop 100% Empty Columns</span>
+                    <span class="option-desc">Eliminate any columns containing zero non-null observations.</span>
+                  </div>
+                </label>
+
+                <!-- Option 5 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanDropMissingRows">
+                  <div class="option-text">
+                    <span class="option-title">Drop Incomplete Rows (Strict)</span>
+                    <span class="option-desc">Discard any records that still contain one or more NaN fields.</span>
+                  </div>
+                </label>
+
+                <!-- Option 6 -->
+                <label class="cleaning-option-card">
+                  <input type="checkbox" id="cleanConvertTypes" checked>
+                  <div class="option-text">
+                    <span class="option-title">Type Inference & Normalization</span>
+                    <span class="option-desc">Convert date strings and numeric strings to canonical types.</span>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="cleaning-actions-footer">
+                <button class="btn btn-primary" id="btnExecuteCleaning">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                  <span>Execute Selected Cleaning Operations</span>
+                </button>
+                <button class="btn btn-outline" id="btnResetCleaning">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                  <span>Revert to Original Dataset</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Before / After Audit Metrics -->
+          <div class="card mb-4" id="cleaningAuditCard" style="display: none;">
+            <div class="card-header">
+              <h3>Cleaning Impact Audit (Before vs. After)</h3>
+              <span class="badge badge-success" id="cleaningSuccessBadge">Cleaned</span>
+            </div>
+            <div class="audit-grid">
+              <div class="audit-item">
+                <span class="audit-label">Total Rows</span>
+                <div class="audit-comparison">
+                  <span class="audit-before" id="auditRowsBefore">--</span>
+                  <span class="audit-arrow">&rarr;</span>
+                  <span class="audit-after" id="auditRowsAfter">--</span>
+                </div>
+                <span class="audit-diff" id="auditRowsDiff">0 rows</span>
+              </div>
+
+              <div class="audit-item">
+                <span class="audit-label">Missing Cells</span>
+                <div class="audit-comparison">
+                  <span class="audit-before" id="auditMissingBefore">--</span>
+                  <span class="audit-arrow">&rarr;</span>
+                  <span class="audit-after" id="auditMissingAfter">--</span>
+                </div>
+                <span class="audit-diff text-success" id="auditMissingDiff">0 cells resolved</span>
+              </div>
+
+              <div class="audit-item">
+                <span class="audit-label">Duplicate Rows</span>
+                <div class="audit-comparison">
+                  <span class="audit-before" id="auditDupsBefore">--</span>
+                  <span class="audit-arrow">&rarr;</span>
+                  <span class="audit-after" id="auditDupsAfter">--</span>
+                </div>
+                <span class="audit-diff text-success" id="auditDupsDiff">0 dups removed</span>
+              </div>
+
+              <div class="audit-item">
+                <span class="audit-label">Data Quality Score</span>
+                <div class="audit-comparison">
+                  <span class="audit-before" id="auditQualityBefore">--%</span>
+                  <span class="audit-arrow">&rarr;</span>
+                  <span class="audit-after" id="auditQualityAfter">--%</span>
+                </div>
+                <span class="audit-diff text-success" id="auditQualityDiff">+0% improvement</span>
+              </div>
+            </div>
+
+            <!-- Execution Logs -->
+            <div class="cleaning-log-box mt-3" id="cleaningLogsContainer">
+              <!-- Logs injected here -->
+            </div>
+          </div>
+        </section>
+
+
+        <!-- ======================================================== -->
+        <!-- TAB 7: REPORTS -->
+        <!-- ======================================================== -->
+        <section class="tab-pane" id="tab-reports">
+          <div class="section-intro flex-between flex-wrap gap-3">
+            <div>
+              <h2>Executive EDA Analysis Report</h2>
+              <p>Generated analytical summary ready for internship presentation and review</p>
+            </div>
+            <div class="report-download-actions">
+              <button class="btn btn-outline" id="btnDownloadCleanedCSV">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                <span>Download Cleaned CSV</span>
+              </button>
+              <button class="btn btn-primary" id="btnDownloadReport">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                <span>Generate & Download Report</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="report-document-card card">
+            <div class="report-header">
+              <div class="report-header-top">
+                <div>
+                  <span class="report-tag">EXECUTIVE INTELLIGENCE BRIEF</span>
+                  <h3 id="reportTitle">Exploratory Data Analysis Report</h3>
+                </div>
+                <div class="report-meta text-right">
+                  <p><strong>Dataset:</strong> <span id="reportDatasetName">sample_sales.csv</span></p>
+                  <p><strong>Generated:</strong> <span id="reportTimestamp">--</span></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Report Body -->
+            <div class="report-body">
+              <!-- Executive Summary -->
+              <div class="report-section">
+                <h4>1. Dataset Scope & Dimensions</h4>
+                <div class="report-metric-pills">
+                  <div class="report-pill"><strong>Total Records:</strong> <span id="repTotalRecords">--</span></div>
+                  <div class="report-pill"><strong>Total Features:</strong> <span id="repTotalCols">--</span></div>
+                  <div class="report-pill"><strong>Missing Values:</strong> <span id="repMissing">--</span></div>
+                  <div class="report-pill"><strong>Duplicates:</strong> <span id="repDuplicates">--</span></div>
+                  <div class="report-pill"><strong>Quality Rating:</strong> <span id="repQuality">--%</span></div>
+                </div>
+              </div>
+
+              <!-- Automated Analytical Observations -->
+              <div class="report-section">
+                <h4>2. Key Analytical Observations & Patterns</h4>
+                <ul class="observations-list" id="reportObservationsList">
+                  <li>Analyzing statistical indicators...</li>
+                </ul>
+              </div>
+
+              <!-- Data Quality Breakdown -->
+              <div class="report-section">
+                <h4>3. Data Hygiene & Integrity Assessment</h4>
+                <div class="quality-score-bar-visual">
+                  <div class="quality-label-row">
+                    <span>Overall Dataset Health Index</span>
+                    <strong id="repQualityScoreVal">--%</strong>
+                  </div>
+                  <div class="progress-bar-bg">
+                    <div class="progress-bar-bar" id="repQualityBar" style="width: 0%;"></div>
+                  </div>
+                  <p class="quality-recommendation" id="repQualityRec">Quality assessment in progress...</p>
+                </div>
+              </div>
+
+              <!-- Audit Cleaning Trail -->
+              <div class="report-section">
+                <h4>4. Transformation & Audit Trail</h4>
+                <div class="audit-history-timeline" id="reportAuditHistory">
+                  <p class="text-muted text-sm">No transformations applied yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Loading Backdrop -->
+  <div class="loading-overlay" id="loadingOverlay">
+    <div class="spinner-box">
+      <div class="spinner"></div>
+      <p id="loadingMessage">Processing Dataset Analysis...</p>
+    </div>
+  </div>
+
+  <!-- Main JavaScript Application Logic -->
+  <script src="script.js"></script>
+</body>
+</html>
