@@ -216,6 +216,8 @@ def index():
 @app.route('/<path:filename>')
 def serve_frontend_assets(filename):
     """Serve frontend CSS, JS, and static assets."""
+    if filename.startswith('api/'):
+        return jsonify({'success': False, 'message': f'API route /{filename} not found'}), 404
     if os.path.exists(os.path.join(FRONTEND_FOLDER, filename)):
         return send_from_directory(FRONTEND_FOLDER, filename)
     return jsonify({'success': False, 'message': f'Asset {filename} not found'}), 404
@@ -553,6 +555,7 @@ def get_statistics():
 
 
 @app.route('/api/correlation', methods=['GET'])
+@app.route('/api/correlations', methods=['GET'])
 def get_correlation():
     """
     GET /api/correlation
@@ -650,6 +653,7 @@ def get_correlation():
 
 
 @app.route('/api/missing-values', methods=['GET'])
+@app.route('/api/missing-value', methods=['GET'])
 def get_missing_values():
     """
     GET /api/missing-values
@@ -695,6 +699,7 @@ def get_missing_values():
 
 
 @app.route('/api/categories', methods=['GET'])
+@app.route('/api/category', methods=['GET'])
 def get_categories():
     """
     GET /api/categories
@@ -737,6 +742,7 @@ def get_categories():
 
 
 @app.route('/api/visualizations', methods=['GET'])
+@app.route('/api/visualization', methods=['GET'])
 def get_visualizations():
     """
     GET /api/visualizations
@@ -1108,6 +1114,7 @@ def compute_box_plots_data(df):
 
 
 @app.route('/api/boxplots', methods=['GET'])
+@app.route('/api/boxplot', methods=['GET'])
 def get_boxplots():
     """
     GET /api/boxplots
@@ -1190,11 +1197,17 @@ def clean_dataset():
                 num_cols = cleaned_df.select_dtypes(include=[np.number]).columns
             filled_num = 0
             for col in num_cols:
+                # If column is object but convertible to numeric, attempt conversion
+                if cleaned_df[col].dtype == 'object':
+                    try:
+                        cleaned_df[col] = pd.to_numeric(cleaned_df[col])
+                    except Exception:
+                        pass
                 n_miss = cleaned_df[col].isna().sum()
-                if n_miss > 0:
+                if n_miss > 0 and pd.api.types.is_numeric_dtype(cleaned_df[col]):
                     fill_val = cleaned_df[col].median() if num_strategy == 'median' else cleaned_df[col].mean()
                     if not pd.isna(fill_val):
-                        cleaned_df[col] = cleaned_df[col].fillna(round(fill_val, 2))
+                        cleaned_df[col] = cleaned_df[col].fillna(round(float(fill_val), 2))
                         filled_num += int(n_miss)
             scope_str = f" in '{target_col}'" if target_col else ""
             log_messages.append(f"Imputed {filled_num} missing numerical value(s){scope_str} using {num_strategy}")
@@ -1286,7 +1299,7 @@ def clean_dataset():
         return jsonify({'success': False, 'message': f"Data cleaning error: {str(e)}"}), 500
 
 
-@app.route('/api/reset', methods=['POST'])
+@app.route('/api/reset', methods=['GET', 'POST'])
 def reset_dataset():
     """
     POST /api/reset

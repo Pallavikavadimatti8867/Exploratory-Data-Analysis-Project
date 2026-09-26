@@ -2204,7 +2204,6 @@ async function handleQuickImputeMissing() {
 }
 
 async function handleQuickDropMissingRows() {
-  if (!confirm('Are you sure you want to drop all rows containing missing values?')) return;
   showLoading('Dropping incomplete rows (dropna)...');
   try {
     const res = await fetch(`${API_BASE}/api/clean`, {

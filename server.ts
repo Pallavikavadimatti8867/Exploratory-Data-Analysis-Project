@@ -36,32 +36,58 @@ const pythonBin = resolvePythonBinary();
 console.log(`[Server] Detected Python binary: "${pythonBin}"`);
 console.log(`[Server] Launching Python Flask backend daemon on port ${FLASK_PORT}...`);
 
-// Spawn Python Flask process
+// Spawn Python Flask process with automatic restart
 let flaskProcess: ChildProcess | null = null;
-try {
-  flaskProcess = spawn(pythonBin, [backendScript], {
-    env: {
-      ...process.env,
-      PORT: String(FLASK_PORT),
-      PYTHONUNBUFFERED: '1',
-    },
-    stdio: 'inherit',
-  });
+let isShuttingDown = false;
+let restartAttempts = 0;
+const MAX_RESTARTS = 15;
 
-  flaskProcess.on('error', (err) => {
-    console.error(`[Server] Error spawning Python process (${pythonBin}):`, err.message);
-    console.error('[Server] Hint: Ensure Python is installed, added to PATH, and requirements are installed (pip install -r requirements.txt)');
-  });
+function startFlaskProcess() {
+  if (isShuttingDown) return;
 
-  flaskProcess.on('exit', (code, signal) => {
-    console.log(`[Server] Flask process exited (code: ${code}, signal: ${signal})`);
-  });
-} catch (err) {
-  console.error('[Server] Failed to initialize Flask subprocess:', err);
+  try {
+    if (process.platform !== 'win32') {
+      execSync(`fuser -k ${FLASK_PORT}/tcp 2>/dev/null || true`, { stdio: 'ignore' });
+    }
+  } catch {
+    // ignore
+  }
+
+  console.log(`[Server] Starting Python Flask backend daemon (port ${FLASK_PORT})...`);
+  try {
+    flaskProcess = spawn(pythonBin, [backendScript], {
+      env: {
+        ...process.env,
+        PORT: String(FLASK_PORT),
+        PYTHONUNBUFFERED: '1',
+      },
+      stdio: 'inherit',
+    });
+
+    flaskProcess.on('error', (err) => {
+      console.error(`[Server] Error spawning Python process (${pythonBin}):`, err.message);
+    });
+
+    flaskProcess.on('exit', (code, signal) => {
+      console.log(`[Server] Flask process exited (code: ${code}, signal: ${signal})`);
+      flaskProcess = null;
+      if (!isShuttingDown && restartAttempts < MAX_RESTARTS) {
+        restartAttempts++;
+        const delay = Math.min(1000 * restartAttempts, 5000);
+        console.log(`[Server] Restarting Flask backend in ${delay}ms (attempt ${restartAttempts}/${MAX_RESTARTS})...`);
+        setTimeout(startFlaskProcess, delay);
+      }
+    });
+  } catch (err) {
+    console.error('[Server] Failed to initialize Flask subprocess:', err);
+  }
 }
+
+startFlaskProcess();
 
 // Clean up child process on parent exit
 function cleanupChildProcess() {
+  isShuttingDown = true;
   if (flaskProcess && !flaskProcess.killed) {
     try {
       flaskProcess.kill();
@@ -96,33 +122,54 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Reverse proxy /api calls to Flask
+// Reverse proxy /api calls to Flask with retry resilience
 app.use('/api', (req, res) => {
-  const options = {
-    hostname: '127.0.0.1',
-    port: FLASK_PORT,
-    path: req.originalUrl,
-    method: req.method,
-    headers: {
-      ...req.headers,
-      host: `127.0.0.1:${FLASK_PORT}`,
-    },
-  };
+  const chunks: Buffer[] = [];
+  req.on('data', (chunk) => chunks.push(chunk));
+  req.on('end', () => {
+    const bodyBuffer = Buffer.concat(chunks);
 
-  const proxyReq = http.request(options, (proxyRes) => {
-    res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
-    proxyRes.pipe(res);
+    const forwardRequest = (retriesLeft: number) => {
+      const options = {
+        hostname: '127.0.0.1',
+        port: FLASK_PORT,
+        path: req.originalUrl,
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: `127.0.0.1:${FLASK_PORT}`,
+          'content-length': String(bodyBuffer.length),
+        },
+      };
+
+      const proxyReq = http.request(options, (proxyRes) => {
+        res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+        proxyRes.pipe(res);
+      });
+
+      proxyReq.on('error', (err: any) => {
+        if (retriesLeft > 0 && (err.code === 'ECONNREFUSED' || err.code === 'ECONNRESET')) {
+          setTimeout(() => forwardRequest(retriesLeft - 1), 350);
+          return;
+        }
+
+        console.error('[Server] API Proxy error to Flask:', err.message);
+        if (!res.headersSent) {
+          res.status(502).json({
+            success: false,
+            message: 'Flask backend is initializing. Please wait a moment and try again.',
+          });
+        }
+      });
+
+      if (bodyBuffer.length > 0) {
+        proxyReq.write(bodyBuffer);
+      }
+      proxyReq.end();
+    };
+
+    forwardRequest(4);
   });
-
-  proxyReq.on('error', (err) => {
-    console.error('[Server] API Proxy error to Flask:', err.message);
-    res.status(502).json({
-      success: false,
-      message: 'Flask backend is initializing or encountered an issue. Please verify Flask is running or retry shortly.',
-    });
-  });
-
-  req.pipe(proxyReq);
 });
 
 // Favicon handler to prevent 404 logs in Chrome, Edge, and other browsers
