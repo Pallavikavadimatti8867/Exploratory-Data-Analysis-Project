@@ -93,62 +93,62 @@ All API responses adhere to a consistent JSON standard:
 
 ---
 
-## 5. Local Setup & Running in VS Code
+## 5. Running in VS Code, Chrome, Edge & Other Environments
 
-### Prerequisites
-- Python 3.9 or higher installed on your system.
-- Git (optional, for cloning).
-- Any modern web browser (Chrome, Firefox, Safari, Edge).
+The application is engineered to run seamlessly across all major operating systems (Windows, macOS, Linux) and browsers (Google Chrome, Microsoft Edge, Mozilla Firefox, Apple Safari).
 
-### Step 1: Clone or Open the Project
-Open VS Code, press ``Ctrl + ` `` (or `Cmd + ` ` on macOS) to open the integrated terminal.
+### Quick Start (Recommended)
 
+You have two simple ways to launch the app:
+
+#### Option A: Full-Stack Node + Python Server (One Command)
 ```bash
-# Navigate to the project directory
-cd EDA-Dashboard
+# 1. Install dependencies
+npm install
+pip install -r requirements.txt
+
+# 2. Start the application
+npm run dev
 ```
+- Open `http://localhost:3000` in **Google Chrome**, **Microsoft Edge**, or your favorite browser.
+- Automatically launches the Python Flask backend daemon and Node.js proxy with CORS, process management, and live error reporting.
 
-### Step 2: Create and Activate Virtual Environment
-
-**On Windows (Command Prompt / PowerShell):**
+#### Option B: Standalone Python Server (Zero Node.js Required)
 ```bash
-python -m venv venv
-venv\Scripts\activate
-```
+# 1. Install dependencies
+pip install -r requirements.txt
 
-**On macOS / Linux:**
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
-
-### Step 3: Install Required Python Packages
-```bash
-pip install -r backend/requirements.txt
-```
-
-### Step 4: Start the Flask Backend Server
-```bash
+# 2. Run Python server
 python backend/app.py
 ```
+- Open `http://localhost:3000` (or `http://127.0.0.1:3000`) in Chrome or Edge.
+- Python directly serves both the REST API and the frontend dashboard assets without any extra runtime.
 
-You will see confirmation logs in the terminal:
-```
-=======================================================
- Exploratory Data Analysis (EDA) Dashboard Server
- Running at: http://0.0.0.0:3000 (or http://127.0.0.1:5000)
- Default sample dataset loaded: sample_sales.csv
-=======================================================
-```
+---
 
-### Step 5: Open the Web Application
-Open your browser and navigate to:
-```
-http://127.0.0.1:3000
-```
-*(If running on port 5000: `http://127.0.0.1:5000`)*
+### Running Directly inside VS Code
 
-The dashboard will open automatically loaded with `data/sample_sales.csv` so it is never blank on first launch.
+1. **Open the project folder** in VS Code (`File > Open Folder...`).
+2. **Press `F5`** (or go to `Run and Debug` in the left sidebar):
+   - Choose **"EDA Studio: Full-Stack (Node + Python)"** to start both servers in the integrated terminal.
+   - Choose **"Launch in Google Chrome"** or **"Launch in Microsoft Edge"** to automatically launch and attach the browser.
+   - Or select the compound configurations **"Full-Stack + Chrome"** / **"Full-Stack + Edge"** to start the server and open the browser in a single click!
+3. **VS Code Tasks**:
+   - Press `Ctrl + Shift + B` (or `Cmd + Shift + B` on Mac) to run the default build/dev task.
+4. **VS Code Live Server Support**:
+   - If using the popular *Live Server* extension on port 5500, the frontend automatically routes API requests to `http://localhost:3000` or `http://127.0.0.1:5000` with full CORS support enabled.
+
+---
+
+### Browser Compatibility & Testing
+
+| Browser | Supported | Features Tested & Verified |
+|---|---|---|
+| **Google Chrome** | ✅ Verified | V8 high-perf Chart.js rendering, WebKit scrollbars, drag-and-drop file upload |
+| **Microsoft Edge** | ✅ Verified | Chromium engine, Edge DevTools debugging, SVG favicons, zero-flicker transitions |
+| **Mozilla Firefox** | ✅ Verified | CSS `scrollbar-width: thin;`, Gecko layout engine, standard Fetch API |
+| **Apple Safari** | ✅ Verified | `-webkit-font-smoothing`, responsive grid, touch-friendly UI |
+| **VS Code Simple Browser** | ✅ Verified | Runs directly inside VS Code's internal browser tab |
 
 ---
 

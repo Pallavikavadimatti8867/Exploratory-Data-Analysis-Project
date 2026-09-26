@@ -48,6 +48,27 @@
   box-sizing: border-box;
   margin: 0;
   padding: 0;
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* Custom Scrollbar for Chrome, Edge, Safari, Opera */
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
 body {
@@ -57,6 +78,9 @@ body {
   line-height: 1.5;
   font-size: 14px;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* ==========================================================================
@@ -1114,6 +1138,582 @@ body {
 .text-success { color: var(--success); }
 .text-danger { color: var(--danger); }
 .py-5 { padding-top: 2rem; padding-bottom: 2rem; }
+
+/* ==========================================================================
+   Box Plots & Outlier Analysis Section
+   ========================================================================== */
+
+.boxplot-section {
+  width: 100%;
+}
+
+.boxplot-section .card {
+  padding: 24px;
+}
+
+.boxplot-toolbar button.active-toggle {
+  background-color: #f1f5f9;
+  border-color: #cbd5e1;
+  color: var(--primary);
+  font-weight: 600;
+}
+
+/* KPI Summary Grid */
+.boxplot-kpis-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+  padding: 16px;
+  background-color: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+}
+
+.bp-kpi-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.bp-kpi-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.bp-kpi-value {
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.bp-kpi-subtext {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+/* Column Selector Bar */
+.boxplot-selector-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+  flex-wrap: wrap;
+}
+
+.selector-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.boxplot-column-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.boxplot-column-buttons .btn {
+  font-size: 12px;
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+}
+
+.boxplot-column-buttons .btn.active {
+  background-color: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 1px 3px rgba(79, 70, 229, 0.25);
+}
+
+/* Comparative Box Plot Card */
+.comparative-boxplot-card {
+  background-color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.comparative-header h4 {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 2px;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 4px;
+  vertical-align: middle;
+}
+
+.legend-dot.bg-indigo { background-color: #4f46e5; }
+.legend-dot.bg-dark { background-color: #0f172a; }
+.legend-dot.bg-emerald { background-color: #10b981; }
+.legend-dot.bg-rose { background-color: #e11d48; }
+
+.comparative-svg-container {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 14px;
+}
+
+.comparative-svg-container svg {
+  display: block;
+  width: 100%;
+  min-width: 600px;
+  height: 260px;
+}
+
+/* Individual Box Plots Grid */
+.individual-boxplots-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+.boxplot-card {
+  background-color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.boxplot-card:hover {
+  border-color: #cbd5e1;
+  box-shadow: var(--shadow-md);
+}
+
+.boxplot-card.has-outliers {
+  border-left: 4px solid var(--danger);
+}
+
+.boxplot-card.no-outliers {
+  border-left: 4px solid var(--success);
+}
+
+.boxplot-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.bp-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.bp-col-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-main);
+  font-family: var(--font-mono);
+}
+
+.bp-status-badge {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+}
+
+.bp-status-badge.badge-outlier {
+  background-color: #fee2e2;
+  color: #991b1b;
+}
+
+.bp-status-badge.badge-clean {
+  background-color: #dcfce7;
+  color: #166534;
+}
+
+/* Box Plot SVG Canvas */
+.boxplot-svg-wrap {
+  width: 100%;
+  overflow-x: auto;
+  position: relative;
+  background-color: #fafbfc;
+  border: 1px solid #f1f5f9;
+  border-radius: var(--radius-sm);
+  padding: 10px 0;
+}
+
+.boxplot-svg-wrap svg {
+  display: block;
+  width: 100%;
+  min-width: 640px;
+  height: 140px;
+  overflow: visible;
+}
+
+/* Statistics Strip below plot */
+.boxplot-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.bp-stat-chip {
+  background-color: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  text-align: center;
+}
+
+.bp-stat-chip-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.bp-stat-chip-val {
+  font-size: 12px;
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.bp-stat-chip.highlight-fence {
+  border-color: #fecdd3;
+  background-color: #fff1f2;
+}
+
+.bp-stat-chip.highlight-fence .bp-stat-chip-val {
+  color: #be123c;
+}
+
+/* Outlier Points and interactive tooltips */
+.outlier-point {
+  cursor: pointer;
+  transition: transform 0.15s ease, r 0.15s ease;
+}
+
+.outlier-point:hover {
+  r: 8.5;
+  filter: drop-shadow(0 0 6px rgba(225, 29, 72, 0.6));
+}
+
+.bp-tooltip {
+  position: fixed;
+  background-color: #0f172a;
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 11.5px;
+  pointer-events: none;
+  z-index: 9999;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+  display: none;
+  line-height: 1.4;
+  max-width: 280px;
+}
+
+.bp-tooltip-title {
+  font-weight: 700;
+  color: #38bdf8;
+  margin-bottom: 4px;
+}
+
+.bp-tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: #cbd5e1;
+}
+
+.bp-tooltip-row strong {
+  color: #fff;
+  font-family: var(--font-mono);
+}
+
+/* Outlier Deep-Dive Sub-Table in Card */
+.bp-outliers-collapse {
+  margin-top: 14px;
+  border-top: 1px dashed #e2e8f0;
+  padding-top: 10px;
+}
+
+.bp-collapse-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  text-align: left;
+}
+
+.bp-collapse-toggle:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.bp-collapse-content {
+  margin-top: 8px;
+}
+
+/* Master Outliers Table */
+.outliers-master-table-card {
+  background-color: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 20px;
+}
+
+.outliers-master-table-card .card-header {
+  padding: 0 0 14px 0;
+}
+
+.btn-view-record {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* ==========================================================================
+   Clickable Metric Cards & Interactive Hints
+   ========================================================================== */
+.clickable-card {
+  cursor: pointer;
+  position: relative;
+}
+
+.clickable-card:hover {
+  border-color: var(--primary);
+  transform: translateY(-3px);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.08);
+}
+
+.metric-action-hint {
+  font-size: 11px;
+  color: var(--primary);
+  margin-top: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* ==========================================================================
+   Dataset Filter Bar & Segmented Pills
+   ========================================================================== */
+.dataset-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 10px 16px;
+  background-color: #f8fafc;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 12px;
+}
+
+.filter-bar-label {
+  font-weight: 700;
+  color: var(--text-muted);
+  margin-right: 4px;
+}
+
+.filter-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+  border-color: #94a3b8;
+  background-color: #f1f5f9;
+}
+
+.filter-pill.active {
+  background-color: var(--text-main);
+  color: #fff;
+  border-color: var(--text-main);
+}
+
+.filter-pill.pill-amber.active {
+  background-color: #d97706;
+  color: #fff;
+  border-color: #b45309;
+}
+
+.filter-pill.pill-rose.active {
+  background-color: #dc2626;
+  color: #fff;
+  border-color: #b91c1c;
+}
+
+.filter-pill.pill-emerald.active {
+  background-color: #059669;
+  color: #fff;
+  border-color: #047857;
+}
+
+.pill-count {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+.filter-pill.active .pill-count {
+  background: rgba(255, 255, 255, 0.28);
+  color: #fff;
+}
+
+/* ==========================================================================
+   Missing & Duplicate Values Diagnostic Card
+   ========================================================================== */
+.diagnostic-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.diag-stat-box {
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+}
+
+.diag-stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.diag-stat-value {
+  font-size: 22px;
+  font-weight: 800;
+  font-family: var(--font-mono);
+  line-height: 1.1;
+}
+
+.diag-stat-sub {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.quick-clean-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 12px 16px;
+  background: #f1f5f9;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--radius-sm);
+}
+
+.quick-clean-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-right: 4px;
+}
+
+.completeness-bar-wrap {
+  width: 100%;
+  min-width: 90px;
+  height: 6px;
+  background-color: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+  margin-top: 4px;
+}
+
+.completeness-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #10b981, #06b6d4);
+  border-radius: 3px;
+}
+
+/* Row highlights for duplicates & missing */
+tr.row-is-duplicate {
+  background-color: #fff1f2 !important;
+}
+
+tr.row-is-duplicate:hover {
+  background-color: #ffe4e6 !important;
+}
+
+tr.row-has-missing {
+  background-color: #fffbeb !important;
+}
+
+tr.row-has-missing:hover {
+  background-color: #fef3c7 !important;
+}
+
+.cell-missing {
+  color: #dc2626;
+  font-weight: 600;
+  background-color: rgba(220, 38, 38, 0.08);
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.badge-duplicate {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-right: 6px;
+  display: inline-block;
+}
 
 /* Responsive adjustments */
 @media (max-width: 900px) {

@@ -13,7 +13,7 @@ function resolveApiBase() {
   const port = window.location.port;
   const origin = window.location.origin;
 
-  // If opened via file:/// or common local static preview servers (e.g. VS Code Live Server on 5500/5501)
+  // If opened via file:/// or VS Code Live Server / static previews (5500, 5501, 5173)
   if (protocol === 'file:' || port === '5500' || port === '5501' || port === '8080' || port === '5173') {
     return 'http://127.0.0.1:3000';
   }
@@ -22,7 +22,26 @@ function resolveApiBase() {
   }
   return 'http://127.0.0.1:3000';
 }
-const API_BASE = resolveApiBase();
+let API_BASE = resolveApiBase();
+
+// In VS Code Live Server / static environments, probe available backend ports (3000, 5000, 5001)
+if (typeof window !== 'undefined' && (window.location.port === '5500' || window.location.port === '5501' || window.location.protocol === 'file:')) {
+  (async function probeBackendPort() {
+    const ports = [3000, 5000, 5001];
+    for (const p of ports) {
+      try {
+        const testRes = await fetch(`http://127.0.0.1:${p}/api/summary`, { method: 'GET' });
+        if (testRes.ok) {
+          API_BASE = `http://127.0.0.1:${p}`;
+          console.log(`[EDA Studio] Auto-detected active backend on port ${p}`);
+          break;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+  })();
+}
 
 // Global application state
 const AppState = {

@@ -4,10 +4,44 @@
  * Powered by Chart.js, Fetch API, and reactive DOM manipulation.
  */
 
-// Determine backend API origin dynamically
-const API_BASE = (window.location.protocol.startsWith('http') && window.location.port !== '5500')
-  ? window.location.origin
-  : 'http://127.0.0.1:5000';
+// Determine backend API origin dynamically across environments (Vite/Node, Flask standalone, VS Code Live Server, Chrome, Edge)
+function resolveApiBase() {
+  if (typeof window === 'undefined' || !window.location) {
+    return 'http://127.0.0.1:3000';
+  }
+  const protocol = window.location.protocol;
+  const port = window.location.port;
+  const origin = window.location.origin;
+
+  // If opened via file:/// or VS Code Live Server / static previews (5500, 5501, 5173)
+  if (protocol === 'file:' || port === '5500' || port === '5501' || port === '8080' || port === '5173') {
+    return 'http://127.0.0.1:3000';
+  }
+  if (protocol.startsWith('http')) {
+    return origin;
+  }
+  return 'http://127.0.0.1:3000';
+}
+let API_BASE = resolveApiBase();
+
+// In VS Code Live Server / static environments, probe available backend ports (3000, 5000, 5001)
+if (typeof window !== 'undefined' && (window.location.port === '5500' || window.location.port === '5501' || window.location.protocol === 'file:')) {
+  (async function probeBackendPort() {
+    const ports = [3000, 5000, 5001];
+    for (const p of ports) {
+      try {
+        const testRes = await fetch(`http://127.0.0.1:${p}/api/summary`, { method: 'GET' });
+        if (testRes.ok) {
+          API_BASE = `http://127.0.0.1:${p}`;
+          console.log(`[EDA Studio] Auto-detected active backend on port ${p}`);
+          break;
+        }
+      } catch {
+        // try next candidate
+      }
+    }
+  })();
+}
 
 // Global application state
 const AppState = {
@@ -22,13 +56,20 @@ const AppState = {
     totalPages: 1,
     searchQuery: '',
     sortCol: '',
-    sortDir: 'asc'
+    sortDir: 'asc',
+    activeFilter: 'all'
   },
   summary: null,
   charts: {},
   stats: null,
   correlations: null,
-  cleaningHistory: []
+  cleaningHistory: [],
+  boxplots: {
+    data: null,
+    selectedCol: 'all',
+    showOutliersOnly: false,
+    showJitter: true
+  }
 };
 
 // Color palettes for Chart.js
@@ -147,6 +188,73 @@ function setupEventListeners() {
     });
   }
 
+  // Segmented Filter Pills (All, Missing, Duplicates, Complete)
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const filter = btn.getAttribute('data-filter') || 'all';
+      setDatasetFilter(filter);
+    });
+  });
+
+  const btnClearFilters = document.getElementById('btnClearTableFilters');
+  if (btnClearFilters) {
+    btnClearFilters.addEventListener('click', () => {
+      setDatasetFilter('all');
+      AppState.dataset.searchQuery = '';
+      const sInput = document.getElementById('datasetSearchInput');
+      if (sInput) sInput.value = '';
+    });
+  }
+
+  // Interactive KPI Metric Cards (Jump to filtered dataset view)
+  const cardMissingBox = document.getElementById('cardMissingValuesBox');
+  if (cardMissingBox) {
+    cardMissingBox.addEventListener('click', () => {
+      switchTab('tab-dataset');
+      setDatasetFilter('missing');
+      showToast('Filtered table to rows containing missing values', 'info');
+    });
+  }
+
+  const cardDupBox = document.getElementById('cardDuplicateRowsBox');
+  if (cardDupBox) {
+    cardDupBox.addEventListener('click', () => {
+      switchTab('tab-dataset');
+      setDatasetFilter('duplicates');
+      showToast('Filtered table to duplicate records', 'info');
+    });
+  }
+
+  // Missing & Duplicate Values Diagnostic Toolbar
+  const btnRefreshDiag = document.getElementById('btnRefreshDiagnostic');
+  if (btnRefreshDiag) {
+    btnRefreshDiag.addEventListener('click', async () => {
+      showToast('Refreshing missing and duplicate diagnostics...', 'info');
+      await fetchMissingAndDuplicateDiagnostics();
+      showToast('Diagnostic audit updated!', 'success');
+    });
+  }
+
+  const btnQuickRemDups = document.getElementById('btnQuickRemoveDups');
+  if (btnQuickRemDups) {
+    btnQuickRemDups.addEventListener('click', handleQuickRemoveDuplicates);
+  }
+
+  const btnQuickImpMiss = document.getElementById('btnQuickImputeMissing');
+  if (btnQuickImpMiss) {
+    btnQuickImpMiss.addEventListener('click', handleQuickImputeMissing);
+  }
+
+  const btnQuickDropRows = document.getElementById('btnQuickDropMissingRows');
+  if (btnQuickDropRows) {
+    btnQuickDropRows.addEventListener('click', handleQuickDropMissingRows);
+  }
+
+  const btnQuickRst = document.getElementById('btnQuickReset');
+  if (btnQuickRst) {
+    btnQuickRst.addEventListener('click', () => handleResetDataset(false));
+  }
+
   // Data Cleaning Controls
   const btnExecuteClean = document.getElementById('btnExecuteCleaning');
   if (btnExecuteClean) {
@@ -155,7 +263,7 @@ function setupEventListeners() {
 
   const btnResetClean = document.getElementById('btnResetCleaning');
   if (btnResetClean) {
-    btnResetClean.addEventListener('click', handleResetDataset);
+    btnResetClean.addEventListener('click', () => handleResetDataset(false));
   }
 
   // Report Download Buttons
@@ -174,6 +282,61 @@ function setupEventListeners() {
       showToast('Downloading processed CSV dataset...', 'success');
     });
   }
+
+  // Box Plots & Outlier Controls
+  const btnToggleOutliers = document.getElementById('btnToggleOutliersOnly');
+  if (btnToggleOutliers) {
+    btnToggleOutliers.addEventListener('click', () => {
+      AppState.boxplots.showOutliersOnly = !AppState.boxplots.showOutliersOnly;
+      btnToggleOutliers.classList.toggle('active-toggle', AppState.boxplots.showOutliersOnly);
+      const txt = document.getElementById('toggleOutliersText');
+      if (txt) {
+        txt.textContent = AppState.boxplots.showOutliersOnly ? 'Showing Outliers Only' : 'Show Outliers Only';
+      }
+      if (AppState.boxplots.data) {
+        renderIndividualBoxPlotCards(AppState.boxplots.data.columns);
+      }
+    });
+  }
+
+  const btnToggleJitter = document.getElementById('btnToggleJitterPoints');
+  if (btnToggleJitter) {
+    btnToggleJitter.addEventListener('click', () => {
+      AppState.boxplots.showJitter = !AppState.boxplots.showJitter;
+      btnToggleJitter.classList.toggle('active-toggle', AppState.boxplots.showJitter);
+      const txt = document.getElementById('toggleJitterText');
+      if (txt) {
+        txt.textContent = AppState.boxplots.showJitter ? 'Data Points: Visible' : 'Data Points: Hidden';
+      }
+      if (AppState.boxplots.data) {
+        renderIndividualBoxPlotCards(AppState.boxplots.data.columns);
+      }
+    });
+  }
+
+  const btnRefreshBP = document.getElementById('btnRefreshBoxPlots');
+  if (btnRefreshBP) {
+    btnRefreshBP.addEventListener('click', () => {
+      fetchBoxPlots();
+      showToast('Refreshing box plots and outlier analysis...', 'info');
+    });
+  }
+
+  const btnExportOutliers = document.getElementById('btnExportOutliersCsv');
+  if (btnExportOutliers) {
+    btnExportOutliers.addEventListener('click', handleExportOutliersCsv);
+  }
+
+  // Delegated event listener for "Locate in Dataset" buttons
+  document.addEventListener('click', (e) => {
+    const btnLocate = e.target.closest('.btn-view-record');
+    if (btnLocate) {
+      const searchVal = btnLocate.getAttribute('data-search') || '';
+      if (searchVal) {
+        locateRecordInDataset(searchVal);
+      }
+    }
+  });
 }
 
 // ============================================================================
@@ -189,6 +352,7 @@ async function loadFullDashboard() {
       fetchStatistics(),
       fetchCorrelations(),
       fetchVisualizations(),
+      fetchMissingAndDuplicateDiagnostics(),
       fetchReport()
     ]);
   } catch (err) {
@@ -260,9 +424,20 @@ async function fetchSummary() {
   }
 }
 
+function setDatasetFilter(filterType) {
+  AppState.dataset.activeFilter = filterType;
+  AppState.dataset.currentPage = 1;
+
+  document.querySelectorAll('.filter-pill').forEach(btn => {
+    btn.classList.toggle('active', btn.getAttribute('data-filter') === filterType);
+  });
+
+  fetchDatasetRecords();
+}
+
 async function fetchDatasetRecords() {
   try {
-    const { currentPage, perPage, searchQuery, sortCol, sortDir } = AppState.dataset;
+    const { currentPage, perPage, searchQuery, sortCol, sortDir, activeFilter } = AppState.dataset;
     const url = new URL(`${API_BASE}/api/data`);
     url.searchParams.set('page', currentPage);
     url.searchParams.set('per_page', perPage);
@@ -270,6 +445,9 @@ async function fetchDatasetRecords() {
     if (sortCol) {
       url.searchParams.set('sort_col', sortCol);
       url.searchParams.set('sort_dir', sortDir);
+    }
+    if (activeFilter && activeFilter !== 'all') {
+      url.searchParams.set('filter', activeFilter);
     }
 
     const res = await fetch(url);
@@ -295,8 +473,26 @@ function renderDatasetTable(data) {
   const thead = document.getElementById('datasetTableHead');
   const tbody = document.getElementById('datasetTableBody');
 
+  // Update Filter Pill counts
+  const countAll = document.getElementById('countPillAll');
+  if (countAll && typeof data.total_dataset_rows === 'number') {
+    countAll.textContent = data.total_dataset_rows.toLocaleString();
+  }
+  const countMissing = document.getElementById('countPillMissing');
+  if (countMissing && typeof data.total_missing_rows === 'number') {
+    countMissing.textContent = data.total_missing_rows.toLocaleString();
+  }
+  const countDuplicates = document.getElementById('countPillDuplicates');
+  if (countDuplicates && typeof data.total_duplicate_rows === 'number') {
+    countDuplicates.textContent = data.total_duplicate_rows.toLocaleString();
+  }
+  const countComplete = document.getElementById('countPillComplete');
+  if (countComplete && typeof data.total_complete_rows === 'number') {
+    countComplete.textContent = data.total_complete_rows.toLocaleString();
+  }
+
   // Build Table Header
-  let headHtml = '<tr><th style="width: 45px;">#</th>';
+  let headHtml = '<tr><th style="width: 55px;">#</th>';
   data.columns.forEach(col => {
     const isSorted = AppState.dataset.sortCol === col;
     const icon = isSorted ? (AppState.dataset.sortDir === 'asc' ? ' ▲' : ' ▼') : '';
@@ -309,17 +505,36 @@ function renderDatasetTable(data) {
   thead.innerHTML = headHtml;
 
   // Build Table Rows
-  if (!data.records || data.records.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${data.columns.length + 1}" class="text-center text-muted py-5">No records matching query.</td></tr>`;
+  const currentPage = data.current_page || 1;
+  const perPage = data.per_page || 10;
+  const startIdx = (currentPage - 1) * perPage;
+  const records = Array.isArray(data.records) ? data.records : [];
+  const totalRecords = typeof data.total_records === 'number' ? data.total_records : 0;
+  const totalPages = data.total_pages || 1;
+
+  if (records.length === 0) {
+    const colSpan = (data.columns ? data.columns.length : 0) + 1;
+    const filterName = AppState.dataset.activeFilter || 'all';
+    let emptyMsg = 'No records matching search query.';
+    if (filterName === 'missing') emptyMsg = '🎉 No records with missing values! Dataset is completely filled.';
+    else if (filterName === 'duplicates') emptyMsg = '✨ Zero duplicate records detected! Dataset rows are distinct.';
+    else if (filterName === 'complete') emptyMsg = 'No complete records found matching criteria.';
+    tbody.innerHTML = `<tr><td colspan="${colSpan}" class="text-center text-muted py-5">${emptyMsg}</td></tr>`;
   } else {
     let rowsHtml = '';
-    const startIdx = (data.current_page - 1) * data.per_page;
-    data.records.forEach((row, i) => {
-      rowsHtml += `<tr><td class="text-muted mono">${startIdx + i + 1}</td>`;
+    records.forEach((row, i) => {
+      const isDup = Boolean(row._is_duplicate);
+      const hasMissing = Boolean(row._has_missing);
+      let rowClasses = [];
+      if (isDup) rowClasses.push('row-is-duplicate');
+      if (hasMissing) rowClasses.push('row-has-missing');
+
+      const dupBadge = isDup ? `<span class="badge-duplicate" title="Duplicate record across all columns">DUP</span>` : '';
+      rowsHtml += `<tr class="${rowClasses.join(' ')}"><td class="text-muted mono">${dupBadge}${startIdx + i + 1}</td>`;
       data.columns.forEach(col => {
         const val = row[col];
         if (val === null || val === undefined) {
-          rowsHtml += `<td><span class="badge badge-secondary" title="Missing value">null</span></td>`;
+          rowsHtml += `<td><span class="cell-missing" title="Missing value (NaN)">NaN</span></td>`;
         } else if (typeof val === 'number') {
           rowsHtml += `<td class="num-cell">${val.toLocaleString()}</td>`;
         } else {
@@ -332,13 +547,34 @@ function renderDatasetTable(data) {
   }
 
   // Update Pagination Controls
-  document.getElementById('paginationInfo').textContent =
-    `Showing ${data.records.length > 0 ? (startIdx + 1) : 0} - ${startIdx + data.records.length} of ${data.total_records.toLocaleString()} records`;
-  document.getElementById('pageIndicator').textContent = `Page ${data.current_page} of ${data.total_pages}`;
-  document.getElementById('btnPrevPage').disabled = data.current_page <= 1;
-  document.getElementById('btnNextPage').disabled = data.current_page >= data.total_pages;
-  document.getElementById('datasetCountSummary').textContent =
-    `Displaying ${data.total_records.toLocaleString()} total filtered records from ${data.filename}`;
+  const paginationInfoEl = document.getElementById('paginationInfo');
+  if (paginationInfoEl) {
+    paginationInfoEl.textContent =
+      `Showing ${records.length > 0 ? (startIdx + 1) : 0} - ${startIdx + records.length} of ${totalRecords.toLocaleString()} records`;
+  }
+  const pageIndicatorEl = document.getElementById('pageIndicator');
+  if (pageIndicatorEl) {
+    pageIndicatorEl.textContent = `Page ${currentPage} of ${totalPages}`;
+  }
+  const btnPrevPageEl = document.getElementById('btnPrevPage');
+  if (btnPrevPageEl) {
+    btnPrevPageEl.disabled = currentPage <= 1;
+  }
+  const btnNextPageEl = document.getElementById('btnNextPage');
+  if (btnNextPageEl) {
+    btnNextPageEl.disabled = currentPage >= totalPages;
+  }
+  const datasetCountSummaryEl = document.getElementById('datasetCountSummary');
+  if (datasetCountSummaryEl) {
+    const filterName = AppState.dataset.activeFilter || 'all';
+    let filterDesc = '';
+    if (filterName === 'missing') filterDesc = ' • Filtered by: Incomplete Rows with Missing Values';
+    else if (filterName === 'duplicates') filterDesc = ' • Filtered by: Duplicate Rows';
+    else if (filterName === 'complete') filterDesc = ' • Filtered by: 100% Complete Records';
+
+    datasetCountSummaryEl.textContent =
+      `Displaying ${totalRecords.toLocaleString()} records from ${data.filename || 'dataset'}${filterDesc}`;
+  }
 }
 
 function handleSortColumn(colName) {
@@ -596,8 +832,14 @@ async function fetchVisualizations() {
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
-    const { charts } = json.data;
+    const { charts, boxplots } = json.data;
     renderAllCharts(charts);
+
+    if (boxplots) {
+      renderBoxPlotSection(boxplots);
+    } else {
+      fetchBoxPlots();
+    }
 
   } catch (err) {
     console.error('Error fetching visualizations:', err);
@@ -918,6 +1160,752 @@ function renderHeatmapGrid(heatmapData) {
 }
 
 // ============================================================================
+// BOX PLOTS & OUTLIER DETECTION ENGINE
+// ============================================================================
+
+async function fetchBoxPlots() {
+  try {
+    const res = await fetch(`${API_BASE}/api/boxplots`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    renderBoxPlotSection(json.data);
+  } catch (err) {
+    console.error('Error fetching box plots:', err);
+  }
+}
+
+function renderBoxPlotSection(data) {
+  if (!data || !data.columns) return;
+  AppState.boxplots.data = data;
+
+  // 1. Update Executive KPI Metric Strip
+  const totalNumColsEl = document.getElementById('bpTotalNumCols');
+  const colsNamesEl = document.getElementById('bpColsNames');
+  const colsWithOutliersEl = document.getElementById('bpColsWithOutliers');
+  const colsWithOutliersPctEl = document.getElementById('bpColsWithOutliersPct');
+  const totalOutliersCountEl = document.getElementById('bpTotalOutliersCount');
+  const totalOutliersRateEl = document.getElementById('bpTotalOutliersRate');
+  const headerBadgeEl = document.getElementById('outlierHeaderBadge');
+
+  if (totalNumColsEl) totalNumColsEl.textContent = `${data.total_numerical_columns} Columns`;
+  if (colsNamesEl) colsNamesEl.textContent = data.columns.map(c => c.column).join(' · ');
+
+  if (colsWithOutliersEl) {
+    colsWithOutliersEl.textContent = `${data.columns_with_outliers} of ${data.total_numerical_columns}`;
+    colsWithOutliersEl.className = data.columns_with_outliers > 0
+      ? 'bp-kpi-value mono font-bold text-rose'
+      : 'bp-kpi-value mono font-bold text-success';
+  }
+
+  if (colsWithOutliersPctEl) {
+    const pct = data.total_numerical_columns > 0
+      ? Math.round((data.columns_with_outliers / data.total_numerical_columns) * 100)
+      : 0;
+    colsWithOutliersPctEl.textContent = `${pct}% of numerical features`;
+  }
+
+  if (totalOutliersCountEl) {
+    totalOutliersCountEl.textContent = `${data.total_outliers_count} Outliers`;
+    totalOutliersCountEl.className = data.total_outliers_count > 0
+      ? 'bp-kpi-value mono font-bold text-rose'
+      : 'bp-kpi-value mono font-bold text-success';
+  }
+
+  if (totalOutliersRateEl) {
+    totalOutliersRateEl.textContent = data.total_outliers_count > 0
+      ? 'Exceeding 1.5× IQR fences'
+      : 'All data points within fences';
+  }
+
+  if (headerBadgeEl) {
+    if (data.total_outliers_count > 0) {
+      headerBadgeEl.className = 'badge badge-rose';
+      headerBadgeEl.textContent = `${data.total_outliers_count} Outliers Detected`;
+    } else {
+      headerBadgeEl.className = 'badge badge-success';
+      headerBadgeEl.textContent = '0 Outliers · Normal Spread';
+    }
+  }
+
+  // 2. Render Column Filter Buttons
+  renderBoxPlotFilterButtons(data.columns);
+
+  // 3. Render Comparative Multi-Column Normalized Box Plot
+  renderComparativeBoxPlot(data.columns);
+
+  // 4. Render Individual Box Plot Cards Grid
+  renderIndividualBoxPlotCards(data.columns);
+
+  // 5. Render Detected Outliers Catalog Table
+  renderMasterOutliersTable(data.columns);
+}
+
+function renderBoxPlotFilterButtons(columns) {
+  const container = document.getElementById('boxplotColumnButtons');
+  if (!container) return;
+
+  const currentSelection = AppState.boxplots.selectedCol || 'all';
+
+  let html = `
+    <button class="btn btn-sm ${currentSelection === 'all' ? 'btn-primary active' : 'btn-outline'}" data-col="all">
+      All Columns (${columns.length})
+    </button>
+  `;
+
+  columns.forEach(col => {
+    const isActive = currentSelection === col.column;
+    const hasOutliers = col.outlier_count > 0;
+    const badgeText = hasOutliers ? `${col.outlier_count} outliers` : '0';
+    html += `
+      <button class="btn btn-sm ${isActive ? 'btn-primary active' : 'btn-outline'}" data-col="${escapeHtml(col.column)}">
+        ${escapeHtml(col.column)} <span style="opacity: 0.85; font-size: 10px;">(${badgeText})</span>
+      </button>
+    `;
+  });
+
+  container.innerHTML = html;
+
+  // Add click listeners to filter buttons
+  container.querySelectorAll('button[data-col]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const selected = btn.getAttribute('data-col');
+      AppState.boxplots.selectedCol = selected;
+      renderBoxPlotFilterButtons(AppState.boxplots.data.columns);
+      renderIndividualBoxPlotCards(AppState.boxplots.data.columns);
+    });
+  });
+}
+
+function renderComparativeBoxPlot(columns) {
+  const container = document.getElementById('comparativeBoxplotContainer');
+  if (!container) return;
+
+  if (!columns || columns.length === 0) {
+    container.innerHTML = '<div class="text-center text-muted py-4">No numerical columns available.</div>';
+    return;
+  }
+
+  const svgWidth = Math.max(680, columns.length * 135);
+  const svgHeight = 240;
+  const padLeft = 65;
+  const padRight = 35;
+  const padTop = 25;
+  const padBottom = 45;
+  const plotWidth = svgWidth - padLeft - padRight;
+  const plotHeight = svgHeight - padTop - padBottom;
+
+  // Normalization maps each column's value to [0%, 100%]
+  const valToNorm = (val, col) => {
+    if (col.max === col.min) return 50;
+    return ((val - col.min) / (col.max - col.min)) * 100;
+  };
+
+  const normToY = (normPct) => {
+    return padTop + plotHeight - (normPct / 100) * plotHeight;
+  };
+
+  let svg = `
+    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" preserveAspectRatio="xMidYMid meet">
+      <!-- Background Guide Lines -->
+  `;
+
+  // Draw horizontal reference lines (0%, 25%, 50%, 75%, 100%)
+  [0, 25, 50, 75, 100].forEach(pct => {
+    const y = normToY(pct);
+    svg += `
+      <line x1="${padLeft}" y1="${y}" x2="${padLeft + plotWidth}" y2="${y}" stroke="#e2e8f0" stroke-width="1" stroke-dasharray="${pct === 0 || pct === 100 ? '0' : '4,4'}" />
+      <text x="${padLeft - 10}" y="${y + 4}" text-anchor="end" fill="#64748b" font-size="10" font-family="JetBrains Mono">${pct}%</text>
+    `;
+  });
+
+  const colSlotWidth = plotWidth / columns.length;
+  const boxWidth = Math.min(38, colSlotWidth * 0.45);
+
+  columns.forEach((col, idx) => {
+    const centerX = padLeft + (idx + 0.5) * colSlotWidth;
+
+    const normMin = valToNorm(col.min, col);
+    const normMax = valToNorm(col.max, col);
+    const normQ25 = valToNorm(col.q25, col);
+    const normMedian = valToNorm(col.median, col);
+    const normQ75 = valToNorm(col.q75, col);
+    const normMean = valToNorm(col.mean, col);
+    const normLowerWhisker = valToNorm(col.lower_whisker, col);
+    const normUpperWhisker = valToNorm(col.upper_whisker, col);
+
+    const yQ25 = normToY(normQ25);
+    const yMedian = normToY(normMedian);
+    const yQ75 = normToY(normQ75);
+    const yLowerWhisker = normToY(normLowerWhisker);
+    const yUpperWhisker = normToY(normUpperWhisker);
+    const yMean = normToY(normMean);
+
+    // Whiskers
+    svg += `
+      <!-- Column ${col.column} Whiskers -->
+      <line x1="${centerX}" y1="${yLowerWhisker}" x2="${centerX}" y2="${yQ25}" stroke="#475569" stroke-width="1.8" />
+      <line x1="${centerX}" y1="${yQ75}" x2="${centerX}" y2="${yUpperWhisker}" stroke="#475569" stroke-width="1.8" />
+      <!-- Whisker end caps -->
+      <line x1="${centerX - boxWidth * 0.35}" y1="${yLowerWhisker}" x2="${centerX + boxWidth * 0.35}" y2="${yLowerWhisker}" stroke="#475569" stroke-width="1.8" />
+      <line x1="${centerX - boxWidth * 0.35}" y1="${yUpperWhisker}" x2="${centerX + boxWidth * 0.35}" y2="${yUpperWhisker}" stroke="#475569" stroke-width="1.8" />
+    `;
+
+    // IQR Box (from Q75 down to Q25)
+    const boxHeight = Math.max(2, yQ25 - yQ75);
+    svg += `
+      <!-- Column ${col.column} IQR Box -->
+      <rect x="${centerX - boxWidth / 2}" y="${yQ75}" width="${boxWidth}" height="${boxHeight}"
+            fill="rgba(79, 70, 229, 0.16)" stroke="#4f46e5" stroke-width="2" rx="3"
+            style="cursor: pointer;"
+            onmouseenter="showBpTooltip(event, '${escapeHtml(col.column)} Summary', 'Min: <strong>${col.min}</strong><br>Q1: <strong>${col.q25}</strong><br>Median: <strong>${col.median}</strong><br>Q3: <strong>${col.q75}</strong><br>Max: <strong>${col.max}</strong><br>Outliers: <strong>${col.outlier_count}</strong>')"
+            onmouseleave="hideBpTooltip()" />
+    `;
+
+    // Median Line
+    svg += `
+      <!-- Median line -->
+      <line x1="${centerX - boxWidth / 2}" y1="${yMedian}" x2="${centerX + boxWidth / 2}" y2="${yMedian}" stroke="#0f172a" stroke-width="2.5" />
+    `;
+
+    // Mean Marker (small emerald diamond)
+    svg += `
+      <polygon points="${centerX},${yMean - 4} ${centerX + 4},${yMean} ${centerX},${yMean + 4} ${centerX - 4},${yMean}" fill="#10b981" stroke="#ffffff" stroke-width="1" />
+    `;
+
+    // Outlier points on comparative view
+    col.outliers.forEach(outlier => {
+      const normVal = valToNorm(outlier.value, col);
+      const yOutlier = normToY(normVal);
+      svg += `
+        <circle cx="${centerX}" cy="${yOutlier}" r="4.5" fill="#e11d48" stroke="#ffffff" stroke-width="1.5" class="outlier-point"
+                onmouseenter="showBpTooltip(event, '${escapeHtml(col.column)} Outlier', 'Value: <strong>${outlier.value}</strong><br>Record: <strong>${escapeHtml(outlier.label)}</strong><br>Row: <strong>#${outlier.row_number}</strong><br>Deviation: <strong>+${outlier.deviation}</strong><br>Fence: <strong>${outlier.fence}</strong>')"
+                onmouseleave="hideBpTooltip()" />
+      `;
+    });
+
+    // Column label at bottom
+    const outlierBadge = col.outlier_count > 0 ? ` (${col.outlier_count})` : '';
+    const labelColor = col.outlier_count > 0 ? '#be123c' : '#0f172a';
+    svg += `
+      <text x="${centerX}" y="${padTop + plotHeight + 20}" text-anchor="middle" fill="${labelColor}" font-size="11" font-weight="600" font-family="Plus Jakarta Sans">
+        ${escapeHtml(col.column.length > 14 ? col.column.substring(0, 12) + '…' : col.column)}${outlierBadge}
+      </text>
+      <text x="${centerX}" y="${padTop + plotHeight + 34}" text-anchor="middle" fill="#64748b" font-size="9.5" font-family="JetBrains Mono">
+        [${col.min} – ${col.max}]
+      </text>
+    `;
+  });
+
+  svg += `</svg>`;
+  container.innerHTML = svg;
+}
+
+function renderIndividualBoxPlotCards(columns) {
+  const container = document.getElementById('individualBoxplotsGrid');
+  if (!container) return;
+
+  const selectedCol = AppState.boxplots.selectedCol || 'all';
+  const showOutliersOnly = AppState.boxplots.showOutliersOnly || false;
+  const showJitter = AppState.boxplots.showJitter !== false;
+
+  let filtered = columns;
+  if (selectedCol !== 'all') {
+    filtered = filtered.filter(c => c.column === selectedCol);
+  }
+  if (showOutliersOnly) {
+    filtered = filtered.filter(c => c.outlier_count > 0);
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="card p-5 text-center">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" style="margin: 0 auto 12px;"><circle cx="12" cy="12" r="10"></circle><line x1="8" y1="12" x2="16" y2="12"></line></svg>
+        <h4 style="margin-bottom: 6px;">No Columns Match Filter</h4>
+        <p class="text-muted text-sm">No numerical attributes match the current filter selection (${showOutliersOnly ? 'Columns with Outliers' : selectedCol}).</p>
+        <div class="mt-3">
+          <button class="btn btn-sm btn-outline" onclick="AppState.boxplots.selectedCol='all'; AppState.boxplots.showOutliersOnly=false; renderBoxPlotFilterButtons(AppState.boxplots.data.columns); renderIndividualBoxPlotCards(AppState.boxplots.data.columns);">
+            Reset Column Filters
+          </button>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  let html = '';
+  filtered.forEach(col => {
+    html += generateIndividualBoxPlotCardHtml(col, showJitter);
+  });
+
+  container.innerHTML = html;
+
+  // Add click listeners to collapsible outlier inspector toggles
+  container.querySelectorAll('.bp-collapse-toggle').forEach(toggle => {
+    toggle.addEventListener('click', () => {
+      const content = toggle.nextElementSibling;
+      if (content) {
+        const isHidden = content.style.display === 'none';
+        content.style.display = isHidden ? 'block' : 'none';
+        toggle.querySelector('.toggle-arrow').textContent = isHidden ? '▲' : '▼';
+      }
+    });
+  });
+}
+
+function generateIndividualBoxPlotCardHtml(col, showJitter) {
+  const hasOutliers = col.outlier_count > 0;
+  const statusBadge = hasOutliers
+    ? `<span class="bp-status-badge badge-outlier">${col.outlier_count} Outliers Detected (${col.outlier_percentage}%)</span>`
+    : `<span class="bp-status-badge badge-clean">Normal Range · 0 Outliers</span>`;
+
+  // SVG coordinate configuration
+  const svgWidth = 760;
+  const svgHeight = 140;
+  const padLeft = 80;
+  const padRight = 60;
+  const padTop = 20;
+  const padBottom = 35;
+  const plotWidth = svgWidth - padLeft - padRight;
+  const centerY = 58;
+
+  // Establish plotting range including fences and min/max
+  const plotMin = Math.min(col.min, col.lower_fence);
+  const plotMax = Math.max(col.max, col.upper_fence);
+  const rawSpan = plotMax - plotMin;
+  const spanPadding = rawSpan > 0 ? rawSpan * 0.06 : 1.0;
+  const spanMin = plotMin - spanPadding;
+  const spanMax = plotMax + spanPadding;
+  const totalSpan = spanMax - spanMin;
+
+  const valToX = (val) => {
+    if (totalSpan <= 0) return padLeft + plotWidth / 2;
+    return padLeft + ((val - spanMin) / totalSpan) * plotWidth;
+  };
+
+  const xMin = valToX(col.min);
+  const xMax = valToX(col.max);
+  const xLowerWhisker = valToX(col.lower_whisker);
+  const xUpperWhisker = valToX(col.upper_whisker);
+  const xQ25 = valToX(col.q25);
+  const xMedian = valToX(col.median);
+  const xQ75 = valToX(col.q75);
+  const xMean = valToX(col.mean);
+  const xLowerFence = valToX(col.lower_fence);
+  const xUpperFence = valToX(col.upper_fence);
+
+  let svg = `
+    <svg viewBox="0 0 ${svgWidth} ${svgHeight}" preserveAspectRatio="xMidYMid meet">
+      <!-- Outlier Zone Background Highlights -->
+  `;
+
+  // Faint red shaded area for lower outlier zone (if within visible range)
+  if (col.lower_fence > spanMin) {
+    const w = Math.max(0, xLowerFence - padLeft);
+    svg += `
+      <rect x="${padLeft}" y="12" width="${w}" height="76" fill="rgba(244, 63, 94, 0.05)" />
+    `;
+  }
+
+  // Faint red shaded area for upper outlier zone
+  if (col.upper_fence < spanMax) {
+    const w = Math.max(0, (padLeft + plotWidth) - xUpperFence);
+    svg += `
+      <rect x="${xUpperFence}" y="12" width="${w}" height="76" fill="rgba(244, 63, 94, 0.05)" />
+    `;
+  }
+
+  // Lower Fence line (dashed red)
+  if (col.lower_fence >= spanMin && col.lower_fence <= spanMax) {
+    svg += `
+      <line x1="${xLowerFence}" y1="12" x2="${xLowerFence}" y2="88" stroke="#f43f5e" stroke-width="1.4" stroke-dasharray="3,3" />
+      <text x="${xLowerFence}" y="10" text-anchor="middle" fill="#be123c" font-size="9" font-family="JetBrains Mono" font-weight="600">Lower Fence: ${col.lower_fence}</text>
+    `;
+  }
+
+  // Upper Fence line (dashed red)
+  if (col.upper_fence >= spanMin && col.upper_fence <= spanMax) {
+    svg += `
+      <line x1="${xUpperFence}" y1="12" x2="${xUpperFence}" y2="88" stroke="#f43f5e" stroke-width="1.4" stroke-dasharray="3,3" />
+      <text x="${xUpperFence}" y="10" text-anchor="middle" fill="#be123c" font-size="9" font-family="JetBrains Mono" font-weight="600">Upper Fence: ${col.upper_fence}</text>
+    `;
+  }
+
+  // Whiskers (Lower Whisker to Q1, and Q3 to Upper Whisker)
+  svg += `
+    <line x1="${xLowerWhisker}" y1="${centerY}" x2="${xQ25}" stroke="#475569" stroke-width="2" />
+    <line x1="${xQ75}" y1="${centerY}" x2="${xUpperWhisker}" stroke="#475569" stroke-width="2" />
+    <!-- Lower whisker cap -->
+    <line x1="${xLowerWhisker}" y1="${centerY - 12}" x2="${xLowerWhisker}" y2="${centerY + 12}" stroke="#475569" stroke-width="2" />
+    <!-- Upper whisker cap -->
+    <line x1="${xUpperWhisker}" y1="${centerY - 12}" x2="${xUpperWhisker}" y2="${centerY + 12}" stroke="#475569" stroke-width="2" />
+  `;
+
+  // Interquartile Range (IQR) Box
+  const boxW = Math.max(3, xQ75 - xQ25);
+  svg += `
+    <rect x="${xQ25}" y="${centerY - 22}" width="${boxW}" height="44"
+          fill="rgba(79, 70, 229, 0.16)" stroke="#4f46e5" stroke-width="2.2" rx="4"
+          onmouseenter="showBpTooltip(event, '${escapeHtml(col.column)} IQR Box', 'Q1 (25%): <strong>${col.q25}</strong><br>Median (50%): <strong>${col.median}</strong><br>Q3 (75%): <strong>${col.q75}</strong><br>IQR Span: <strong>${col.iqr}</strong>')"
+          onmouseleave="hideBpTooltip()" />
+  `;
+
+  // Median line (bold vertical slate)
+  svg += `
+    <line x1="${xMedian}" y1="${centerY - 22}" x2="${xMedian}" y2="${centerY + 22}" stroke="#0f172a" stroke-width="3" />
+    <circle cx="${xMedian}" cy="${centerY - 22}" r="2" fill="#0f172a" />
+  `;
+
+  // Mean Marker (emerald diamond)
+  svg += `
+    <polygon points="${xMean},${centerY - 6} ${xMean + 5},${centerY} ${xMean},${centerY + 6} ${xMean - 5},${centerY}"
+             fill="#10b981" stroke="#ffffff" stroke-width="1.2"
+             onmouseenter="showBpTooltip(event, '${escapeHtml(col.column)} Mean', 'Calculated Mean: <strong>${col.mean}</strong><br>Std Dev: <strong>${col.std}</strong>')"
+             onmouseleave="hideBpTooltip()" />
+  `;
+
+  // Optional Data Jitter Points Overlay
+  if (showJitter && col.sample_values && col.sample_values.length > 0) {
+    col.sample_values.forEach((v, sIdx) => {
+      // If point is not an outlier, render quiet scatter dot
+      if (v >= col.lower_fence && v <= col.upper_fence) {
+        const jx = valToX(v);
+        const jy = centerY + (Math.sin(sIdx * 1.7) * 13);
+        svg += `
+          <circle cx="${jx}" cy="${jy}" r="2.5" fill="rgba(99, 102, 241, 0.35)" />
+        `;
+      }
+    });
+  }
+
+  // OUTLIER POINTS (Prominently Highlighted with pulsing crimson rings)
+  if (hasOutliers) {
+    col.outliers.forEach(outlier => {
+      const ox = valToX(outlier.value);
+      const isExtreme = outlier.is_extreme;
+      const pointColor = isExtreme ? '#be123c' : '#e11d48';
+
+      svg += `
+        <!-- Outlier Halo Ring -->
+        <circle cx="${ox}" cy="${centerY}" r="11" fill="none" stroke="${isExtreme ? 'rgba(190, 18, 60, 0.45)' : 'rgba(225, 29, 72, 0.35)'}" stroke-width="1.5" />
+        <!-- Outlier Node -->
+        <circle cx="${ox}" cy="${centerY}" r="6.5" fill="${pointColor}" stroke="#ffffff" stroke-width="2.2" class="outlier-point"
+                onmouseenter="showBpTooltip(event, '🚨 Outlier in ${escapeHtml(col.column)}', 'Value: <strong>${outlier.value}</strong><br>Threshold Fence: <strong>${outlier.fence}</strong><br>Deviation: <strong>+${outlier.deviation}</strong> (${outlier.direction})<br>Severity: <strong>${isExtreme ? 'Extreme (> 3.0× IQR)' : 'Mild (> 1.5× IQR)'}</strong><br>Record: <strong>${escapeHtml(outlier.label)}</strong> (Row #${outlier.row_number})')"
+                onmouseleave="hideBpTooltip()" />
+      `;
+    });
+  }
+
+  // Coordinate Bottom Axis
+  svg += `
+    <line x1="${padLeft}" y1="98" x2="${padLeft + plotWidth}" y2="98" stroke="#cbd5e1" stroke-width="1.2" />
+  `;
+
+  // Draw 5-7 evenly spaced tick markers along the axis
+  const tickCount = 6;
+  for (let i = 0; i <= tickCount; i++) {
+    const tickVal = spanMin + (i / tickCount) * totalSpan;
+    const tx = padLeft + (i / tickCount) * plotWidth;
+    svg += `
+      <line x1="${tx}" y1="98" x2="${tx}" y2="103" stroke="#94a3b8" stroke-width="1" />
+      <text x="${tx}" y="115" text-anchor="middle" fill="#64748b" font-size="10" font-family="JetBrains Mono">${roundVal(tickVal, 1)}</text>
+    `;
+  }
+
+  svg += `</svg>`;
+
+  // Outlier records sub-table html
+  let outlierRowsHtml = '';
+  if (hasOutliers) {
+    col.outliers.forEach(outlier => {
+      const isExtreme = outlier.is_extreme;
+      const badgeClass = isExtreme ? 'badge-rose' : 'badge-warning';
+      const searchKey = outlier.label.replace('Row ', '').trim();
+
+      outlierRowsHtml += `
+        <tr>
+          <td class="mono font-bold">#${outlier.row_number}</td>
+          <td><strong>${escapeHtml(outlier.label)}</strong></td>
+          <td class="mono font-bold text-rose">${outlier.value}</td>
+          <td class="mono">${outlier.fence}</td>
+          <td class="mono text-rose">+${outlier.deviation}</td>
+          <td><span class="badge ${outlier.direction === 'high' ? 'badge-rose' : 'badge-info'}">${outlier.direction.toUpperCase()}</span></td>
+          <td><span class="badge ${badgeClass}">${isExtreme ? 'Extreme' : 'Mild'}</span></td>
+          <td>
+            <button class="btn btn-sm btn-outline btn-view-record" data-search="${escapeHtml(searchKey)}">
+              View in Dataset
+            </button>
+          </td>
+        </tr>
+      `;
+    });
+  }
+
+  return `
+    <div class="boxplot-card ${hasOutliers ? 'has-outliers' : 'no-outliers'}">
+      <div class="boxplot-card-header">
+        <div class="bp-title-wrap">
+          <span class="bp-col-title">${escapeHtml(col.column)}</span>
+          <span class="text-sm text-muted">(${col.count.toLocaleString()} valid records)</span>
+        </div>
+        <div>
+          ${statusBadge}
+        </div>
+      </div>
+
+      <div class="boxplot-svg-wrap">
+        ${svg}
+      </div>
+
+      <!-- Five-Number Summary Strip -->
+      <div class="boxplot-stats-strip">
+        <div class="bp-stat-chip">
+          <div class="bp-stat-chip-label">Min</div>
+          <div class="bp-stat-chip-val">${col.min}</div>
+        </div>
+        <div class="bp-stat-chip highlight-fence">
+          <div class="bp-stat-chip-label">Lower Fence</div>
+          <div class="bp-stat-chip-val">${col.lower_fence}</div>
+        </div>
+        <div class="bp-stat-chip">
+          <div class="bp-stat-chip-label">Q1 (25%)</div>
+          <div class="bp-stat-chip-val">${col.q25}</div>
+        </div>
+        <div class="bp-stat-chip" style="background-color: #f1f5f9; border-color: #cbd5e1;">
+          <div class="bp-stat-chip-label">Median (Q2)</div>
+          <div class="bp-stat-chip-val">${col.median}</div>
+        </div>
+        <div class="bp-stat-chip" style="border-color: #a7f3d0; background-color: #ecfdf5;">
+          <div class="bp-stat-chip-label" style="color: #047857;">Mean</div>
+          <div class="bp-stat-chip-val" style="color: #047857;">${col.mean}</div>
+        </div>
+        <div class="bp-stat-chip">
+          <div class="bp-stat-chip-label">Q3 (75%)</div>
+          <div class="bp-stat-chip-val">${col.q75}</div>
+        </div>
+        <div class="bp-stat-chip highlight-fence">
+          <div class="bp-stat-chip-label">Upper Fence</div>
+          <div class="bp-stat-chip-val">${col.upper_fence}</div>
+        </div>
+        <div class="bp-stat-chip">
+          <div class="bp-stat-chip-label">Max</div>
+          <div class="bp-stat-chip-val">${col.max}</div>
+        </div>
+        <div class="bp-stat-chip">
+          <div class="bp-stat-chip-label">IQR Span</div>
+          <div class="bp-stat-chip-val">${col.iqr}</div>
+        </div>
+      </div>
+
+      <!-- Collapsible Outlier Records Deep-Dive -->
+      ${hasOutliers ? `
+        <div class="bp-outliers-collapse">
+          <button class="bp-collapse-toggle">
+            <span>Inspect ${col.outlier_count} Detected Outliers for <strong>${escapeHtml(col.column)}</strong></span>
+            <span class="toggle-arrow">▼</span>
+          </button>
+          <div class="bp-collapse-content" style="display: none;">
+            <div class="table-responsive mt-2">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Row</th>
+                    <th>Identifier / Label</th>
+                    <th>Value</th>
+                    <th>Fence Threshold</th>
+                    <th>Deviation</th>
+                    <th>Direction</th>
+                    <th>Severity</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${outlierRowsHtml}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      ` : `
+        <div style="font-size: 11.5px; color: #166534; margin-top: 10px; display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          <span>All values fall cleanly between Tukey lower fence (${col.lower_fence}) and upper fence (${col.upper_fence}).</span>
+        </div>
+      `}
+    </div>
+  `;
+}
+
+function renderMasterOutliersTable(columns) {
+  const tbody = document.getElementById('outliersMasterTableBody');
+  if (!tbody) return;
+
+  const allOutliers = [];
+  columns.forEach(col => {
+    if (col.outliers && col.outliers.length > 0) {
+      col.outliers.forEach(item => {
+        allOutliers.push({
+          column: col.column,
+          ...item
+        });
+      });
+    }
+  });
+
+  if (allOutliers.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="9" class="text-center text-success py-4">No outliers detected across any numerical columns in this dataset.</td></tr>';
+    return;
+  }
+
+  // Sort all outliers by deviation amount descending
+  allOutliers.sort((a, b) => b.deviation - a.deviation);
+
+  let html = '';
+  allOutliers.forEach(item => {
+    const isExtreme = item.is_extreme;
+    const badgeClass = isExtreme ? 'badge-rose' : 'badge-warning';
+    const searchKey = item.label.replace('Row ', '').trim();
+
+    html += `
+      <tr>
+        <td class="mono font-bold">${escapeHtml(item.column)}</td>
+        <td class="mono">#${item.row_number}</td>
+        <td><strong>${escapeHtml(item.label)}</strong></td>
+        <td class="mono font-bold text-rose">${item.value}</td>
+        <td class="mono">${item.fence}</td>
+        <td class="mono text-rose">+${item.deviation}</td>
+        <td><span class="badge ${item.direction === 'high' ? 'badge-rose' : 'badge-info'}">${item.direction.toUpperCase()}</span></td>
+        <td><span class="badge ${badgeClass}">${isExtreme ? 'Extreme' : 'Mild'}</span></td>
+        <td>
+          <button class="btn btn-sm btn-outline btn-view-record" data-search="${escapeHtml(searchKey)}">
+            View in Dataset
+          </button>
+        </td>
+      </tr>
+    `;
+  });
+
+  tbody.innerHTML = html;
+}
+
+function handleExportOutliersCsv() {
+  const data = AppState.boxplots.data;
+  if (!data || !data.columns) {
+    showToast('No outlier data available to export.', 'warning');
+    return;
+  }
+
+  const rows = [
+    ['Column', 'Row_Number', 'Identifier_Label', 'Outlier_Value', 'Threshold_Fence', 'Deviation', 'Direction', 'Severity']
+  ];
+
+  data.columns.forEach(col => {
+    if (col.outliers) {
+      col.outliers.forEach(item => {
+        rows.push([
+          `"${col.column}"`,
+          item.row_number,
+          `"${item.label.replace(/"/g, '""')}"`,
+          item.value,
+          item.fence,
+          item.deviation,
+          item.direction,
+          item.is_extreme ? 'Extreme' : 'Mild'
+        ]);
+      });
+    }
+  });
+
+  if (rows.length === 1) {
+    showToast('No outliers detected in the dataset to export.', 'info');
+    return;
+  }
+
+  const csvContent = rows.map(e => e.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.setAttribute('href', url);
+  link.setAttribute('download', `EDA_Outliers_${AppState.dataset.filename || 'dataset'}.csv`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  showToast('Outliers report downloaded successfully.', 'success');
+}
+
+function locateRecordInDataset(searchVal) {
+  // 1. Switch to Dataset tab
+  switchTab('tab-dataset');
+
+  // 2. Set search input value
+  const searchInput = document.getElementById('datasetSearchInput');
+  if (searchInput) {
+    searchInput.value = searchVal;
+    AppState.dataset.searchQuery = searchVal;
+    AppState.dataset.currentPage = 1;
+    fetchDatasetRecords();
+  }
+
+  // 3. Scroll table into view
+  const tableWrap = document.getElementById('datasetTableContainer');
+  if (tableWrap) {
+    tableWrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  showToast(`Filtering records for "${searchVal}"...`, 'info');
+}
+
+// Tooltip utility functions
+let activeTooltipEl = null;
+
+function showBpTooltip(event, title, contentHtml) {
+  if (!activeTooltipEl) {
+    activeTooltipEl = document.getElementById('bpTooltip');
+    if (!activeTooltipEl) {
+      activeTooltipEl = document.createElement('div');
+      activeTooltipEl.id = 'bpTooltip';
+      activeTooltipEl.className = 'bp-tooltip';
+      document.body.appendChild(activeTooltipEl);
+    }
+  }
+
+  activeTooltipEl.innerHTML = `
+    <div class="bp-tooltip-title">${title}</div>
+    <div style="font-size: 11px;">${contentHtml}</div>
+  `;
+
+  activeTooltipEl.style.display = 'block';
+  positionBpTooltip(event);
+}
+
+function positionBpTooltip(event) {
+  if (!activeTooltipEl) return;
+  const x = event.clientX + 14;
+  const y = event.clientY + 14;
+  activeTooltipEl.style.left = `${Math.min(window.innerWidth - 260, x)}px`;
+  activeTooltipEl.style.top = `${y}px`;
+}
+
+function hideBpTooltip() {
+  if (activeTooltipEl) {
+    activeTooltipEl.style.display = 'none';
+  }
+}
+
+window.showBpTooltip = showBpTooltip;
+window.hideBpTooltip = hideBpTooltip;
+
+document.addEventListener('mousemove', (e) => {
+  if (activeTooltipEl && activeTooltipEl.style.display === 'block') {
+    positionBpTooltip(e);
+  }
+});
+
+function roundVal(val, decimals = 1) {
+  if (val === null || val === undefined || isNaN(val)) return '0';
+  return Number(val).toFixed(decimals);
+}
+
+// ============================================================================
 // DATA CLEANING MODULE
 // ============================================================================
 
@@ -959,14 +1947,7 @@ async function handleExecuteCleaning() {
     showToast('Data cleaning transformations applied successfully!', 'success');
 
     // Refresh entire dashboard with updated cleaned dataset
-    await Promise.all([
-      fetchSummary(),
-      fetchDatasetRecords(),
-      fetchStatistics(),
-      fetchCorrelations(),
-      fetchVisualizations(),
-      fetchReport()
-    ]);
+    await loadFullDashboard();
 
   } catch (err) {
     console.error('Cleaning failed:', err);
@@ -1057,20 +2038,45 @@ async function handleFileUpload(e) {
   }
 }
 
-async function handleResetDataset() {
-  showLoading('Restoring original dataset...');
+async function handleResetDataset(reloadSample = false) {
+  showLoading(reloadSample ? 'Reloading default sample dataset...' : 'Restoring original uncleaned dataset...');
   try {
-    const res = await fetch(`${API_BASE}/api/reset`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/api/reset`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reload_sample: reloadSample })
+    });
     const json = await res.json();
     if (!json.success) throw new Error(json.message);
 
-    showToast('Dataset reset to original state.', 'success');
-    document.getElementById('cleaningAuditCard').style.display = 'none';
+    showToast(json.message || 'Dataset restored to original state.', 'success');
+    const auditCard = document.getElementById('cleaningAuditCard');
+    if (auditCard) auditCard.style.display = 'none';
 
+    // Reset dataset view, search, and filter pills
     AppState.dataset.currentPage = 1;
     AppState.dataset.searchQuery = '';
+    AppState.dataset.activeFilter = 'all';
+    document.querySelectorAll('.filter-pill').forEach(btn => {
+      btn.classList.toggle('active', btn.getAttribute('data-filter') === 'all');
+    });
+
     const sInput = document.getElementById('datasetSearchInput');
     if (sInput) sInput.value = '';
+
+    // Reset cleaning form checkboxes
+    const cDups = document.getElementById('cleanRemoveDups');
+    if (cDups) cDups.checked = true;
+    const cNum = document.getElementById('cleanFillNumeric');
+    if (cNum) cNum.checked = true;
+    const cCat = document.getElementById('cleanFillCat');
+    if (cCat) cCat.checked = true;
+    const cEmpty = document.getElementById('cleanDropEmptyCols');
+    if (cEmpty) cEmpty.checked = false;
+    const cDropRows = document.getElementById('cleanDropMissingRows');
+    if (cDropRows) cDropRows.checked = false;
+    const cTypes = document.getElementById('cleanConvertTypes');
+    if (cTypes) cTypes.checked = true;
 
     await loadFullDashboard();
 
@@ -1081,6 +2087,186 @@ async function handleResetDataset() {
     hideLoading();
   }
 }
+
+// ============================================================================
+// MISSING VALUES & DUPLICATES DIAGNOSTICS & QUICK ACTIONS
+// ============================================================================
+
+async function fetchMissingAndDuplicateDiagnostics() {
+  try {
+    const res = await fetch(`${API_BASE}/api/missing-values`);
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+
+    const data = json.data;
+    const summary = AppState.summary || {};
+    const totalRows = summary.total_rows || (data.columns && data.columns.length > 0 ? (data.columns[0].non_null_count + data.columns[0].missing_count) : 0);
+
+    // Diagnostic stat boxes
+    const diagMissingCells = document.getElementById('diagMissingCells');
+    if (diagMissingCells) diagMissingCells.textContent = (data.total_missing_cells || 0).toLocaleString();
+
+    const diagMissingPct = document.getElementById('diagMissingPct');
+    if (diagMissingPct) diagMissingPct.textContent = `${data.overall_missing_percentage || 0}% of all cells`;
+
+    const rowsWithMissing = Math.max(0, totalRows - (data.complete_cases || 0));
+    const diagMissingRows = document.getElementById('diagMissingRows');
+    if (diagMissingRows) diagMissingRows.textContent = rowsWithMissing.toLocaleString();
+
+    const diagMissingRowsPct = document.getElementById('diagMissingRowsPct');
+    if (diagMissingRowsPct) {
+      const pct = totalRows > 0 ? ((rowsWithMissing / totalRows) * 100).toFixed(1) : '0';
+      diagMissingRowsPct.textContent = `${pct}% of records`;
+    }
+
+    const diagDuplicateRows = document.getElementById('diagDuplicateRows');
+    if (diagDuplicateRows) diagDuplicateRows.textContent = (data.duplicate_rows || 0).toLocaleString();
+
+    const diagDuplicateStatus = document.getElementById('diagDuplicateStatus');
+    if (diagDuplicateStatus) {
+      diagDuplicateStatus.textContent = data.duplicate_rows === 0 ? 'Zero duplicates' : `${data.duplicate_rows} duplicate record(s)`;
+    }
+
+    const diagCompleteCases = document.getElementById('diagCompleteCases');
+    if (diagCompleteCases) diagCompleteCases.textContent = (data.complete_cases || 0).toLocaleString();
+
+    const diagCompleteCasesPct = document.getElementById('diagCompleteCasesPct');
+    if (diagCompleteCasesPct) {
+      const compPct = totalRows > 0 ? (((data.complete_cases || 0) / totalRows) * 100).toFixed(1) : '100';
+      diagCompleteCasesPct.textContent = `${compPct}% clean rows`;
+    }
+
+    // Per-column missing breakdown table
+    const tbody = document.getElementById('missingTableBody');
+    if (tbody && data.columns) {
+      if (data.columns.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No column data available.</td></tr>';
+      } else {
+        let html = '';
+        data.columns.forEach(col => {
+          const completeness = Math.max(0, 100 - (col.missing_percentage || 0)).toFixed(1);
+          const hasMissing = col.missing_count > 0;
+          const isNum = col.dtype.includes('int') || col.dtype.includes('float');
+          const quickActionBtn = hasMissing
+            ? `<button class="btn btn-sm btn-outline" style="padding: 2px 8px; font-size: 11px;" onclick="handleQuickImputeSingleColumn('${col.column}', '${isNum ? 'mean' : 'mode'}')" title="Impute ${col.column}">Fill with ${isNum ? 'Mean' : 'Mode'}</button>`
+            : `<span class="badge badge-success">100% Complete</span>`;
+
+          html += `
+            <tr>
+              <td><strong>${escapeHtml(col.column)}</strong></td>
+              <td><span class="badge ${isNum ? 'badge-primary' : 'badge-secondary'}">${col.dtype}</span></td>
+              <td class="${hasMissing ? 'text-amber font-bold' : 'text-muted'}">${col.missing_count.toLocaleString()}</td>
+              <td>${col.missing_percentage}%</td>
+              <td>${col.non_null_count.toLocaleString()}</td>
+              <td>
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div class="completeness-bar-wrap" style="flex: 1;">
+                    <div class="completeness-fill" style="width: ${completeness}%;"></div>
+                  </div>
+                  <span style="font-size: 11px; font-weight: 600; width: 38px;">${completeness}%</span>
+                </div>
+              </td>
+              <td>${quickActionBtn}</td>
+            </tr>
+          `;
+        });
+        tbody.innerHTML = html;
+      }
+    }
+  } catch (err) {
+    console.error('Error fetching missing values diagnostic:', err);
+  }
+}
+
+async function handleQuickRemoveDuplicates() {
+  showLoading('Executing Pandas drop_duplicates()...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actions: ['remove_duplicates'] })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast(json.data.logs[0] || 'Duplicate rows removed!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function handleQuickImputeMissing() {
+  showLoading('Imputing missing values across numeric & categorical features...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actions: ['fill_missing_numerical', 'fill_missing_categorical'],
+        numeric_strategy: 'mean',
+        categorical_strategy: 'mode'
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast('Missing values successfully imputed with mean and mode!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+async function handleQuickDropMissingRows() {
+  showLoading('Dropping incomplete rows (dropna)...');
+  try {
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ actions: ['drop_missing_rows'] })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast('Incomplete records dropped!', 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+}
+
+window.handleQuickImputeSingleColumn = async function(columnName, strategy) {
+  showLoading(`Imputing column '${columnName}' with ${strategy}...`);
+  try {
+    const action = (strategy === 'mode') ? 'fill_missing_categorical' : 'fill_missing_numerical';
+    const res = await fetch(`${API_BASE}/api/clean`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        actions: [action],
+        target_column: columnName,
+        numeric_strategy: strategy,
+        categorical_strategy: strategy
+      })
+    });
+    const json = await res.json();
+    if (!json.success) throw new Error(json.message);
+    showToast(`Column '${columnName}' imputed successfully!`, 'success');
+    displayCleaningAudit(json.data);
+    await loadFullDashboard();
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  } finally {
+    hideLoading();
+  }
+};
 
 // ============================================================================
 // REPORTS MODULE

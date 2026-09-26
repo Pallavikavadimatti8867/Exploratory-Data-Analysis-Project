@@ -2,12 +2,16 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Exploratory Data Analysis (EDA) Dashboard</title>
   <meta name="description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
   <meta property="og:title" content="Exploratory Data Analysis (EDA) Dashboard">
   <meta property="og:description" content="Interactive data analysis, visualization, cleaning, and reporting platform powered by Python Flask and Pandas.">
   <meta property="og:type" content="website">
+
+  <!-- Favicon for Chrome, Edge, Safari, Firefox -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%234f46e5' stroke-width='2.2'%3E%3Crect x='3' y='3' width='18' height='18' rx='3'/%3E%3Cline x1='3' y1='9' x2='21' y2='9'/%3E%3Cline x1='9' y1='21' x2='9' y2='9'/%3E%3C/svg%3E">
 
   <!-- Inter Font -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -191,26 +195,28 @@
               <div class="metric-subtext" id="cardColumnSplit">-- Numeric &bull; -- Categorical</div>
             </div>
 
-            <div class="metric-card">
+            <div class="metric-card clickable-card" id="cardMissingValuesBox" title="Click to inspect rows with missing values">
               <div class="metric-header">
                 <span class="metric-label">Missing Values</span>
                 <div class="metric-icon-wrap icon-amber">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                 </div>
               </div>
-              <div class="metric-value" id="cardMissingValues">--</div>
+              <div class="metric-value text-amber" id="cardMissingValues">--</div>
               <div class="metric-subtext" id="cardMissingRate">-- of total cells</div>
+              <div class="metric-action-hint">Click to filter missing records &rarr;</div>
             </div>
 
-            <div class="metric-card">
+            <div class="metric-card clickable-card" id="cardDuplicateRowsBox" title="Click to inspect duplicate rows">
               <div class="metric-header">
                 <span class="metric-label">Duplicate Rows</span>
                 <div class="metric-icon-wrap icon-rose">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
                 </div>
               </div>
-              <div class="metric-value" id="cardDuplicateRows">--</div>
+              <div class="metric-value text-rose" id="cardDuplicateRows">--</div>
               <div class="metric-subtext" id="cardDuplicateStatus">Status: Checked</div>
+              <div class="metric-action-hint">Click to filter duplicate records &rarr;</div>
             </div>
 
             <div class="metric-card">
@@ -324,6 +330,31 @@
               </div>
             </div>
 
+            <!-- Interactive Filter Bar: All, Missing Values, Duplicates, Complete Cases -->
+            <div class="dataset-filter-bar">
+              <span class="filter-bar-label">Filter View:</span>
+              <button class="filter-pill active" id="filterPillAll" data-filter="all">
+                <span>All Records</span>
+                <span class="pill-count" id="countPillAll">--</span>
+              </button>
+              <button class="filter-pill pill-amber" id="filterPillMissing" data-filter="missing">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                <span>Rows with Missing Values</span>
+                <span class="pill-count" id="countPillMissing">--</span>
+              </button>
+              <button class="filter-pill pill-rose" id="filterPillDuplicates" data-filter="duplicates">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                <span>Duplicate Records</span>
+                <span class="pill-count" id="countPillDuplicates">--</span>
+              </button>
+              <button class="filter-pill pill-emerald" id="filterPillComplete" data-filter="complete">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Complete Cases Only</span>
+                <span class="pill-count" id="countPillComplete">--</span>
+              </button>
+              <button class="btn btn-sm btn-outline ml-auto" id="btnClearTableFilters" title="Reset table filters">Reset Filter</button>
+            </div>
+
             <!-- Table with Horizontal Scrolling -->
             <div class="table-responsive" style="max-height: 540px;">
               <table class="data-table sticky-header" id="datasetPreviewTable">
@@ -353,12 +384,21 @@
         <!-- TAB 3: VISUALIZATIONS -->
         <!-- ======================================================== -->
         <section class="tab-pane" id="tab-visualizations">
-          <div class="section-intro">
-            <h2>Automated Interactive Visualizations</h2>
-            <p>Dynamically constructed visualizations mapped to dataset attributes via Chart.js</p>
+          <div class="section-intro flex-between flex-wrap gap-3">
+            <div>
+              <h2>Automated Interactive Visualizations</h2>
+              <p>Dynamically constructed visualizations mapped to dataset attributes via Chart.js and statistical outlier engines</p>
+            </div>
+            <div class="viz-nav-links flex-align-center gap-2">
+              <a href="#viz-standard-grid" class="btn btn-sm btn-outline">Standard Charts (1–8)</a>
+              <a href="#boxplotSection" class="btn btn-sm btn-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                <span>Box Plots & Outliers</span>
+              </a>
+            </div>
           </div>
 
-          <div class="viz-grid">
+          <div class="viz-grid" id="viz-standard-grid">
             <!-- Chart 1: Value by Category -->
             <div class="card viz-card">
               <div class="card-header">
@@ -460,6 +500,133 @@
               </div>
               <div class="heatmap-container" id="correlationHeatmapContainer">
                 <div class="text-center text-muted py-5">Computing correlation matrix...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ======================================================== -->
+          <!-- SECTION: NUMERICAL FEATURE BOX PLOTS & OUTLIER DETECTION -->
+          <!-- ======================================================== -->
+          <div class="boxplot-section mt-5" id="boxplotSection">
+            <div class="card">
+              <div class="card-header flex-between flex-wrap gap-3">
+                <div>
+                  <div class="flex-align-center gap-2">
+                    <h3>Numerical Feature Box Plots & Outlier Analysis</h3>
+                    <span class="badge badge-rose" id="outlierHeaderBadge">Outlier Detection Active</span>
+                  </div>
+                  <p class="card-desc">Five-number summary (Min, Q1, Median, Q3, Max) with Tukey IQR fences (1.5&times; IQR) to identify, isolate, and highlight data outliers across all numerical columns.</p>
+                </div>
+
+                <div class="boxplot-toolbar flex-align-center gap-2 flex-wrap">
+                  <button class="btn btn-sm btn-outline" id="btnToggleOutliersOnly" title="Filter to columns containing detected outliers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                    <span id="toggleOutliersText">Show Outliers Only</span>
+                  </button>
+
+                  <button class="btn btn-sm btn-outline active-toggle" id="btnToggleJitterPoints" title="Toggle individual data points overlay">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="5" cy="12" r="2"></circle><circle cx="12" cy="12" r="2"></circle><circle cx="19" cy="12" r="2"></circle></svg>
+                    <span id="toggleJitterText">Data Points: Visible</span>
+                  </button>
+
+                  <button class="btn btn-sm btn-outline" id="btnRefreshBoxPlots" title="Recalculate box plots and outliers">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Outlier Summary Metrics Strip -->
+              <div class="boxplot-kpis-grid">
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Numerical Columns Evaluated</div>
+                  <div class="bp-kpi-value mono font-bold" id="bpTotalNumCols">--</div>
+                  <div class="bp-kpi-subtext" id="bpColsNames">Scanning columns...</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Columns with Outliers</div>
+                  <div class="bp-kpi-value mono font-bold text-rose" id="bpColsWithOutliers">--</div>
+                  <div class="bp-kpi-subtext" id="bpColsWithOutliersPct">--% of numerical features</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Total Outliers Detected</div>
+                  <div class="bp-kpi-value mono font-bold text-rose" id="bpTotalOutliersCount">--</div>
+                  <div class="bp-kpi-subtext" id="bpTotalOutliersRate">-- of total records</div>
+                </div>
+
+                <div class="bp-kpi-item">
+                  <div class="bp-kpi-label">Detection Rule</div>
+                  <div class="bp-kpi-value mono font-bold text-indigo">Tukey 1.5&times; IQR</div>
+                  <div class="bp-kpi-subtext">Q1 - 1.5&times;IQR &bull; Q3 + 1.5&times;IQR</div>
+                </div>
+              </div>
+
+              <!-- Column Selector Filter Pills / Buttons -->
+              <div class="boxplot-selector-bar">
+                <span class="selector-label">Filter Column:</span>
+                <div class="boxplot-column-buttons flex-align-center gap-2 flex-wrap" id="boxplotColumnButtons">
+                  <button class="btn btn-sm btn-primary active" data-col="all">All Numerical Columns</button>
+                </div>
+              </div>
+
+              <!-- Comparative Multi-Column Normalized Box Plot View -->
+              <div class="comparative-boxplot-card mt-4">
+                <div class="comparative-header flex-between flex-wrap gap-2">
+                  <div>
+                    <h4>Normalized Multi-Column Comparative Box Plot</h4>
+                    <p class="text-sm text-muted">Unified 0% to 100% scale comparing quartile spreads, medians, and outlier clusters side-by-side</p>
+                  </div>
+                  <div class="legend-items flex-align-center gap-3 text-xs text-muted">
+                    <span class="legend-item"><span class="legend-dot bg-indigo"></span> IQR Box (Q1 - Q3)</span>
+                    <span class="legend-item"><span class="legend-dot bg-dark"></span> Median (Q2)</span>
+                    <span class="legend-item"><span class="legend-dot bg-emerald"></span> Mean</span>
+                    <span class="legend-item"><span class="legend-dot bg-rose"></span> Outlier (&gt; 1.5&times; IQR)</span>
+                  </div>
+                </div>
+                <div class="comparative-svg-container" id="comparativeBoxplotContainer">
+                  <div class="text-center text-muted py-4">Rendering comparative box plots...</div>
+                </div>
+              </div>
+
+              <!-- Individual Column Box Plot Cards Container -->
+              <div class="individual-boxplots-grid mt-4" id="individualBoxplotsGrid">
+                <div class="text-center text-muted py-5">Computing five-number summaries and outlier coordinates...</div>
+              </div>
+
+              <!-- Outliers Master Deep-Dive Table -->
+              <div class="outliers-master-table-card mt-4" id="outliersMasterTableCard">
+                <div class="card-header flex-between flex-wrap gap-2">
+                  <div>
+                    <h4>Detected Outliers Catalog</h4>
+                    <p class="card-desc">Exhaustive list of data points exceeding Tukey statistical fence thresholds</p>
+                  </div>
+                  <button class="btn btn-sm btn-outline" id="btnExportOutliersCsv">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    <span>Export Outliers List</span>
+                  </button>
+                </div>
+                <div class="table-responsive" style="max-height: 380px;">
+                  <table class="data-table" id="outliersMasterTable">
+                    <thead>
+                      <tr>
+                        <th>Column</th>
+                        <th>Row #</th>
+                        <th>Identifier / Label</th>
+                        <th>Value</th>
+                        <th>Threshold Fence</th>
+                        <th>Deviation</th>
+                        <th>Direction</th>
+                        <th>Severity</th>
+                        <th>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody id="outliersMasterTableBody">
+                      <tr><td colspan="9" class="text-center text-muted">Loading outlier records...</td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
           </div>
@@ -615,6 +782,87 @@
           <div class="section-intro">
             <h2>Data Cleaning & Preprocessing Suite</h2>
             <p>Safely address data hygiene issues with instant before-and-after audit verification</p>
+          </div>
+
+          <!-- Diagnostic & Health Overview: Missing Values & Duplicate Values -->
+          <div class="card mb-4" id="missingAndDuplicatesDiagnosticCard">
+            <div class="card-header flex-between flex-wrap gap-2">
+              <div>
+                <h3>Missing & Duplicate Values Diagnostic</h3>
+                <p class="card-desc">Detailed health audit of incomplete fields, duplicate observations, and automated repairs</p>
+              </div>
+              <div class="header-action-group">
+                <button class="btn btn-sm btn-outline" id="btnRefreshDiagnostic" title="Refresh diagnostics">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+                  <span>Re-audit</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Metric Summary Strip -->
+            <div class="diagnostic-stats-strip">
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Missing Cells</span>
+                <span class="diag-stat-value text-amber" id="diagMissingCells">--</span>
+                <span class="diag-stat-sub" id="diagMissingPct">--% of all cells</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Incomplete Rows</span>
+                <span class="diag-stat-value text-amber" id="diagMissingRows">--</span>
+                <span class="diag-stat-sub" id="diagMissingRowsPct">--% of records</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Duplicate Rows</span>
+                <span class="diag-stat-value text-rose" id="diagDuplicateRows">--</span>
+                <span class="diag-stat-sub" id="diagDuplicateStatus">Checking...</span>
+              </div>
+              <div class="diag-stat-box">
+                <span class="diag-stat-label">Complete Cases</span>
+                <span class="diag-stat-value text-emerald" id="diagCompleteCases">--</span>
+                <span class="diag-stat-sub" id="diagCompleteCasesPct">--% clean rows</span>
+              </div>
+            </div>
+
+            <!-- Quick Action Toolbar -->
+            <div class="quick-clean-toolbar mt-3">
+              <span class="quick-clean-title">⚡ 1-Click Operations:</span>
+              <button class="btn btn-sm btn-outline" id="btnQuickRemoveDups">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="8" y="8" width="14" height="14" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>
+                <span>Remove Duplicates</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickImputeMissing">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                <span>Impute All Missing</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickDropMissingRows">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                <span>Drop Incomplete Rows</span>
+              </button>
+              <button class="btn btn-sm btn-outline" id="btnQuickReset">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                <span>Revert Dataset</span>
+              </button>
+            </div>
+
+            <!-- Per-Column Missing Breakdown Table -->
+            <div class="table-responsive mt-3" style="max-height: 280px;">
+              <table class="data-table" id="missingBreakdownTable">
+                <thead>
+                  <tr>
+                    <th>Column Name</th>
+                    <th>Data Type</th>
+                    <th>Missing Count</th>
+                    <th>Missing %</th>
+                    <th>Non-Null Count</th>
+                    <th>Completeness</th>
+                    <th>Quick Impute</th>
+                  </tr>
+                </thead>
+                <tbody id="missingTableBody">
+                  <tr><td colspan="7" class="text-center text-muted">Auditing dataset missing values...</td></tr>
+                </tbody>
+              </table>
+            </div>
           </div>
 
           <!-- Cleaning Action Form -->

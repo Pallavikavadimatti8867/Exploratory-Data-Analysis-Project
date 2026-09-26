@@ -216,6 +216,8 @@ def index():
 @app.route('/<path:filename>')
 def serve_frontend_assets(filename):
     """Serve frontend CSS, JS, and static assets."""
+    if filename.startswith('api/'):
+        return jsonify({'success': False, 'message': f'API route /{filename} not found'}), 404
     if os.path.exists(os.path.join(FRONTEND_FOLDER, filename)):
         return send_from_directory(FRONTEND_FOLDER, filename)
     return jsonify({'success': False, 'message': f'Asset {filename} not found'}), 404
@@ -299,10 +301,29 @@ def get_data():
       - search: filter keyword
       - sort_col: column name
       - sort_dir: 'asc' or 'desc'
+      - filter: 'all', 'missing', 'duplicates', or 'complete'
     """
     try:
         df = get_active_df()
         filtered_df = df.copy()
+
+        # Precompute total counts for metadata
+        total_missing_rows_count = int(df.isna().any(axis=1).sum())
+        total_duplicate_rows_count = int(df.duplicated(keep=False).sum())
+        total_complete_rows_count = int((~df.isna().any(axis=1)).sum())
+
+        # Duplicate and missing row index sets for rapid lookup
+        dup_indices = set(df[df.duplicated(keep=False)].index)
+        missing_indices = set(df[df.isna().any(axis=1)].index)
+
+        # Handle filter preset (all, missing, duplicates, complete)
+        row_filter = request.args.get('filter', 'all').strip().lower()
+        if row_filter == 'missing':
+            filtered_df = filtered_df[filtered_df.isna().any(axis=1)]
+        elif row_filter == 'duplicates':
+            filtered_df = filtered_df[filtered_df.duplicated(keep=False)]
+        elif row_filter == 'complete':
+            filtered_df = filtered_df[~filtered_df.isna().any(axis=1)]
 
         # Handle global search
         search_query = request.args.get('search', '').strip()
@@ -329,12 +350,15 @@ def get_data():
         end_idx = start_idx + per_page
         paginated_df = filtered_df.iloc[start_idx:end_idx]
 
-        # Convert records to dictionary, ensuring NaNs become None
+        # Convert records to dictionary, ensuring NaNs become None and marking flags
         records = []
-        for _, row in paginated_df.iterrows():
+        for orig_idx, row in paginated_df.iterrows():
             row_dict = {}
             for col in df.columns:
                 row_dict[col] = clean_val_for_json(row[col])
+            row_dict['_is_duplicate'] = bool(orig_idx in dup_indices)
+            row_dict['_has_missing'] = bool(orig_idx in missing_indices)
+            row_dict['_original_index'] = int(orig_idx)
             records.append(row_dict)
 
         # Build column stats summary
@@ -359,6 +383,10 @@ def get_data():
                 'total_records': total_records,
                 'total_dataset_rows': len(df),
                 'total_columns': len(df.columns),
+                'total_missing_rows': total_missing_rows_count,
+                'total_duplicate_rows': total_duplicate_rows_count,
+                'total_complete_rows': total_complete_rows_count,
+                'active_filter': row_filter,
                 'current_page': page,
                 'per_page': per_page,
                 'total_pages': total_pages,
@@ -527,6 +555,7 @@ def get_statistics():
 
 
 @app.route('/api/correlation', methods=['GET'])
+@app.route('/api/correlations', methods=['GET'])
 def get_correlation():
     """
     GET /api/correlation
@@ -624,6 +653,7 @@ def get_correlation():
 
 
 @app.route('/api/missing-values', methods=['GET'])
+@app.route('/api/missing-value', methods=['GET'])
 def get_missing_values():
     """
     GET /api/missing-values
@@ -669,6 +699,7 @@ def get_missing_values():
 
 
 @app.route('/api/categories', methods=['GET'])
+@app.route('/api/category', methods=['GET'])
 def get_categories():
     """
     GET /api/categories
@@ -711,6 +742,7 @@ def get_categories():
 
 
 @app.route('/api/visualizations', methods=['GET'])
+@app.route('/api/visualization', methods=['GET'])
 def get_visualizations():
     """
     GET /api/visualizations
@@ -738,9 +770,11 @@ def get_visualizations():
         def find_col_by_keywords(cols, keywords, fallback_idx=0):
             for kw in keywords:
                 for c in cols:
-                    if kw.lower() in c.lower():
+                    if kw.lower() in str(c).lower():
                         return c
-            return cols[fallback_idx] if len(cols) > fallback_idx else None
+            if fallback_idx is not None and 0 <= fallback_idx < len(cols):
+                return cols[fallback_idx]
+            return None
 
         primary_val_col = find_col_by_keywords(num_cols, ['sales', 'revenue', 'price', 'amount', 'total', 'value'], 0)
         primary_qty_col = find_col_by_keywords(num_cols, ['quantity', 'qty', 'count', 'units', 'volume'], 1 if len(num_cols) > 1 else 0)
@@ -942,11 +976,17 @@ def get_visualizations():
         else:
             charts['chart8'] = None
 
+        # -------------------------------------------------------------
+        # Box Plots & Outlier Analysis Data
+        # -------------------------------------------------------------
+        boxplots_data = compute_box_plots_data(df)
+
         return jsonify({
             'success': True,
             'message': 'Visualizations calculated successfully',
             'data': {
                 'charts': sanitize_dict_for_json(charts),
+                'boxplots': sanitize_dict_for_json(boxplots_data),
                 'columns_used': {
                     'primary_value': primary_val_col,
                     'primary_quantity': primary_qty_col,
@@ -958,6 +998,139 @@ def get_visualizations():
         })
     except Exception as e:
         return jsonify({'success': False, 'message': f"Error generating visualizations: {str(e)}"}), 500
+
+
+def compute_box_plots_data(df):
+    """
+    Computes rigorous five-number summaries (Min, Q1, Median, Q3, Max)
+    and Tukey interquartile range (1.5x IQR) fences to isolate and highlight
+    outliers for every numerical column in the dataset.
+    """
+    num_cols = list(df.select_dtypes(include=[np.number]).columns)
+
+    # Try to identify an ID or label column for contextual outlier reporting
+    label_col = None
+    for candidate in ['Product', 'Name', 'Title', 'Item', 'Customer_ID', 'ID']:
+        if candidate in df.columns:
+            label_col = candidate
+            break
+
+    columns_data = []
+    total_outliers_count = 0
+    cols_with_outliers_count = 0
+
+    for col in num_cols:
+        series = df[col].dropna()
+        missing_count = int(df[col].isna().sum())
+
+        if series.empty:
+            continue
+
+        q25 = float(series.quantile(0.25))
+        q50 = float(series.median())
+        q75 = float(series.quantile(0.75))
+        iqr = q75 - q25
+        lower_fence = q25 - 1.5 * iqr
+        upper_fence = q75 + 1.5 * iqr
+        extreme_lower_fence = q25 - 3.0 * iqr
+        extreme_upper_fence = q75 + 3.0 * iqr
+
+        # Whiskers according to standard Tukey definition:
+        # Lower whisker: lowest non-outlier value (>= lower_fence)
+        # Upper whisker: highest non-outlier value (<= upper_fence)
+        non_outliers = series[(series >= lower_fence) & (series <= upper_fence)]
+        lower_whisker = float(non_outliers.min()) if not non_outliers.empty else float(series.min())
+        upper_whisker = float(non_outliers.max()) if not non_outliers.empty else float(series.max())
+
+        # Detect outliers
+        outlier_mask = (series < lower_fence) | (series > upper_fence)
+        outlier_indices = series[outlier_mask].index
+
+        outliers_list = []
+        for idx in outlier_indices:
+            row = df.loc[idx]
+            val = float(row[col])
+            is_high = val > upper_fence
+            direction = 'high' if is_high else 'low'
+            fence_val = upper_fence if is_high else lower_fence
+            diff = abs(val - fence_val)
+            is_extreme = (val > extreme_upper_fence) or (val < extreme_lower_fence)
+            record_label = str(row[label_col]) if label_col and label_col in row and not pd.isna(row[label_col]) else f"Row {int(idx) + 1}"
+
+            outliers_list.append({
+                'index': int(idx),
+                'row_number': int(idx) + 1,
+                'value': round(val, 2),
+                'direction': direction,
+                'deviation': round(diff, 2),
+                'fence': round(fence_val, 2),
+                'is_extreme': bool(is_extreme),
+                'label': record_label
+            })
+
+        # Sort outliers by deviation descending
+        outliers_list.sort(key=lambda x: x['deviation'], reverse=True)
+
+        outlier_count = len(outliers_list)
+        if outlier_count > 0:
+            cols_with_outliers_count += 1
+            total_outliers_count += outlier_count
+
+        # Representative distribution points for data jitter/scatter visualization (up to 120 points)
+        sample_size = min(len(series), 120)
+        sample_vals = [round(float(v), 2) for v in series.sample(sample_size, random_state=42).tolist()] if len(series) > 0 else []
+
+        columns_data.append({
+            'column': col,
+            'count': int(len(series)),
+            'missing': missing_count,
+            'min': round(float(series.min()), 2),
+            'max': round(float(series.max()), 2),
+            'mean': round(float(series.mean()), 2),
+            'std': round(float(series.std()), 2) if len(series) > 1 else 0.0,
+            'q25': round(q25, 2),
+            'median': round(q50, 2),
+            'q75': round(q75, 2),
+            'iqr': round(iqr, 2),
+            'lower_whisker': round(lower_whisker, 2),
+            'upper_whisker': round(upper_whisker, 2),
+            'lower_fence': round(lower_fence, 2),
+            'upper_fence': round(upper_fence, 2),
+            'extreme_lower_fence': round(extreme_lower_fence, 2),
+            'extreme_upper_fence': round(extreme_upper_fence, 2),
+            'outliers': outliers_list,
+            'outlier_count': outlier_count,
+            'outlier_percentage': round((outlier_count / len(series)) * 100, 2) if len(series) > 0 else 0.0,
+            'has_outliers': outlier_count > 0,
+            'sample_values': sample_vals
+        })
+
+    return {
+        'total_numerical_columns': len(columns_data),
+        'columns_with_outliers': cols_with_outliers_count,
+        'total_outliers_count': total_outliers_count,
+        'columns': columns_data
+    }
+
+
+@app.route('/api/boxplots', methods=['GET'])
+@app.route('/api/boxplot', methods=['GET'])
+def get_boxplots():
+    """
+    GET /api/boxplots
+    Returns five-number statistical summaries, Tukey fence calculations,
+    and isolated outliers with record contextual details for all numerical columns.
+    """
+    try:
+        df = get_active_df()
+        boxplots_data = compute_box_plots_data(df)
+        return jsonify({
+            'success': True,
+            'message': 'Box plot outlier analysis completed successfully',
+            'data': sanitize_dict_for_json(boxplots_data)
+        })
+    except Exception as e:
+        return jsonify({'success': False, 'message': f"Error computing box plots: {str(e)}"}), 500
 
 
 @app.route('/api/clean', methods=['POST'])
@@ -1014,22 +1187,37 @@ def clean_dataset():
             else:
                 log_messages.append("No completely empty columns found")
 
+        target_col = req_data.get('target_column')
+
         # 3. Fill missing numerical values
         if 'fill_missing_numerical' in actions:
-            num_cols = cleaned_df.select_dtypes(include=[np.number]).columns
+            if target_col and target_col in cleaned_df.columns:
+                num_cols = [target_col]
+            else:
+                num_cols = cleaned_df.select_dtypes(include=[np.number]).columns
             filled_num = 0
             for col in num_cols:
+                # If column is object but convertible to numeric, attempt conversion
+                if cleaned_df[col].dtype == 'object':
+                    try:
+                        cleaned_df[col] = pd.to_numeric(cleaned_df[col])
+                    except Exception:
+                        pass
                 n_miss = cleaned_df[col].isna().sum()
-                if n_miss > 0:
+                if n_miss > 0 and pd.api.types.is_numeric_dtype(cleaned_df[col]):
                     fill_val = cleaned_df[col].median() if num_strategy == 'median' else cleaned_df[col].mean()
                     if not pd.isna(fill_val):
-                        cleaned_df[col] = cleaned_df[col].fillna(round(fill_val, 2))
+                        cleaned_df[col] = cleaned_df[col].fillna(round(float(fill_val), 2))
                         filled_num += int(n_miss)
-            log_messages.append(f"Imputed {filled_num} missing numerical value(s) using {num_strategy}")
+            scope_str = f" in '{target_col}'" if target_col else ""
+            log_messages.append(f"Imputed {filled_num} missing numerical value(s){scope_str} using {num_strategy}")
 
         # 4. Fill missing categorical values
         if 'fill_missing_categorical' in actions:
-            cat_cols = cleaned_df.select_dtypes(exclude=[np.number]).columns
+            if target_col and target_col in cleaned_df.columns:
+                cat_cols = [target_col]
+            else:
+                cat_cols = cleaned_df.select_dtypes(exclude=[np.number]).columns
             filled_cat = 0
             for col in cat_cols:
                 n_miss = cleaned_df[col].isna().sum()
@@ -1041,7 +1229,8 @@ def clean_dataset():
                         fill_val = 'Unknown'
                     cleaned_df[col] = cleaned_df[col].fillna(fill_val)
                     filled_cat += int(n_miss)
-            log_messages.append(f"Imputed {filled_cat} missing categorical value(s) using {cat_strategy}")
+            scope_str = f" in '{target_col}'" if target_col else ""
+            log_messages.append(f"Imputed {filled_cat} missing categorical value(s){scope_str} using {cat_strategy}")
 
         # 5. Drop rows with missing values
         if 'drop_missing_rows' in actions:
@@ -1110,14 +1299,22 @@ def clean_dataset():
         return jsonify({'success': False, 'message': f"Data cleaning error: {str(e)}"}), 500
 
 
-@app.route('/api/reset', methods=['POST'])
+@app.route('/api/reset', methods=['GET', 'POST'])
 def reset_dataset():
     """
     POST /api/reset
     Restores dataset to the original uploaded version or sample_sales.csv.
+    Supports JSON {"reload_sample": true} or query ?reload_sample=true.
     """
     try:
-        if CURRENT_DATASET.get('original_df') is not None:
+        req_json = request.get_json(silent=True) or {}
+        force_sample = req_json.get('reload_sample') or request.args.get('reload_sample') == 'true'
+
+        if force_sample or CURRENT_DATASET.get('original_df') is None:
+            sample_file = os.path.join(DATA_FOLDER, 'sample_sales.csv')
+            df = load_dataset(sample_file, 'sample_sales.csv')
+            msg = 'Default retail sales sample dataset reloaded successfully'
+        else:
             CURRENT_DATASET['df'] = CURRENT_DATASET['original_df'].copy()
             CURRENT_DATASET['history'].append({
                 'action': 'Reset to Original',
@@ -1125,17 +1322,21 @@ def reset_dataset():
                 'rows': int(len(CURRENT_DATASET['df'])),
                 'cols': int(len(CURRENT_DATASET['df'].columns))
             })
-            return jsonify({
-                'success': True,
-                'message': 'Dataset successfully reset to original state'
-            })
-        else:
-            sample_file = os.path.join(DATA_FOLDER, 'sample_sales.csv')
-            load_dataset(sample_file, 'sample_sales.csv')
-            return jsonify({
-                'success': True,
-                'message': 'Default sample dataset reloaded successfully'
-            })
+            df = CURRENT_DATASET['df']
+            msg = 'Dataset successfully restored to original uncleaned state'
+
+        return jsonify({
+            'success': True,
+            'message': msg,
+            'data': {
+                'total_rows': int(len(df)),
+                'total_columns': int(len(df.columns)),
+                'missing_values': int(df.isna().sum().sum()),
+                'duplicate_rows': int(df.duplicated().sum()),
+                'quality_score': calculate_data_quality_score(df),
+                'filename': CURRENT_DATASET.get('filename', 'dataset.csv')
+            }
+        })
     except Exception as e:
         return jsonify({'success': False, 'message': f"Reset failed: {str(e)}"}), 500
 
